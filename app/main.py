@@ -3,11 +3,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+import shutil
 import sys
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -23,12 +25,24 @@ def resource_path(relative: str) -> Path:
     return root / relative
 
 
+def ensure_extension_files() -> None:
+    """Expose bundled Chrome extension files next to a frozen EXE."""
+    source = resource_path("chrome_extension")
+    if not source.exists():
+        return
+    if getattr(sys, "frozen", False):
+        target = Path(sys.executable).resolve().parent / "chrome_extension"
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target, dirs_exist_ok=True)
+
+
 app = FastAPI(title="LatAm Collector", docs_url=None, redoc_url=None)
 
 
 @app.on_event("startup")
 def startup() -> None:
     initialize()
+    ensure_extension_files()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -117,12 +131,7 @@ def reviews(year_from: int = 2025, year_to: int = 2026, page: int = 1, page_size
     return {"total": total, "items": [dict(row) for row in rows]}
 
 
-@app.post("/api/import/json")
-async def import_json(request: Request):
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise HTTPException(400, "文件不是有效的 JSON") from exc
+def import_payload(payload: dict[str, Any], source: str = "数据导入") -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(400, "JSON 顶层必须是对象")
     products_found = parse_products(payload)
@@ -163,9 +172,42 @@ async def import_json(request: Request):
                 r,
             )
             inserted_reviews += db.total_changes - before
-    message = f"导入完成：识别商品 {len(products_found)} 条，评论 {len(reviews_found)} 条"
-    add_log("数据导入", message)
+    message = f"识别商品 {len(products_found)} 条，评论 {len(reviews_found)} 条"
+    add_log(source, message)
     return {"ok": True, "message": message, "products": len(products_found), "reviews": len(reviews_found)}
+
+
+@app.post("/api/import/json")
+async def import_json(request: Request):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "文件不是有效的 JSON") from exc
+    return import_payload(payload)
+
+
+CAPTURE_URL_MARKERS = ("search_items", "recommend_v2", "get_ratings")
+
+
+@app.post("/api/capture")
+async def capture_from_chrome(request: Request):
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "无效的采集数据") from exc
+    source_url = str(body.get("source_url") or "")
+    payload = body.get("payload")
+    parsed_url = urlparse(source_url)
+    host = (parsed_url.hostname or "").lower()
+    if parsed_url.scheme != "https" or not (host == "shopee.com.br" or host.endswith(".shopee.com.br")):
+        raise HTTPException(403, "只接受 Shopee 巴西站数据")
+    if not any(marker in source_url for marker in CAPTURE_URL_MARKERS):
+        raise HTTPException(400, "不是已支持的数据接口")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "响应内容不是 JSON 对象")
+    result = import_payload(payload, "Chrome采集助手")
+    result["source_url"] = source_url
+    return result
 
 
 @app.get("/api/tasks")
@@ -253,7 +295,7 @@ def export_xlsx(kind: str):
 
 @app.get("/api/system")
 def system_info():
-    return {"version": "0.1.0", "database": str(DB_PATH), "connectors": {"shopee": "数据导入可用", "shein": "待开发", "mercadolivre": "待开发"}}
+    return {"version": "0.2.0", "database": str(DB_PATH), "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"}}
 
 
 def run() -> None:
