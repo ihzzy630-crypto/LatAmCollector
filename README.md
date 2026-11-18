@@ -2,6 +2,8 @@
 
 面向巴西跨境电商选品的本地数据管理与采集平台。第一版支持 Shopee 搜索、热门推荐、评论 JSON 导入，商品筛选以及 Excel/CSV 导出。
 
+v0.2 新增 Chrome 采集助手，可在正常浏览 Shopee 巴西站时自动捕获支持的商品与评论 JSON，并发送到本机平台，不读取 Cookie、密码或请求头。
+
 ## PowerShell 一键安装（推荐）
 
 以普通方式打开 Windows PowerShell，依次运行：
@@ -38,9 +40,17 @@ powershell -ExecutionPolicy Bypass -File $setup
 - 商品及评论 CSV/Excel 导出
 - 任务配置、数据源状态和运行日志
 - 只监听本机 `127.0.0.1`，不会对局域网或互联网开放管理端
+- Chrome 自动采集助手（`chrome_extension` 文件夹）
+
+## 安装 Chrome 采集助手
+
+1. 在 Chrome 打开 `chrome://extensions`。
+2. 打开右上角“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择 `D:\gpt专用文件\LatAmCollector\chrome_extension`。
+5. 保持本地平台运行，打开或刷新 Shopee 巴西站页面。
 
 ## 后续接口
 
 采集连接器计划采用独立适配器：Shopee Chrome 采集助手、SHEIN 连接器、Mercado Livre 官方 API/公开数据连接器。网站接口改变时只替换连接器，不修改商品库与任务中心。
-
 
