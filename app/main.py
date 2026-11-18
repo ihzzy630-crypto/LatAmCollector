@@ -56,7 +56,10 @@ def home():
 def stats():
     with connect() as db:
         product_count = db.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-        review_count = db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+        review_count = db.execute(
+            """SELECT COUNT(*) FROM reviews
+               WHERE CAST(substr(review_time,1,4) AS INTEGER) BETWEEN 2025 AND 2026"""
+        ).fetchone()[0]
         qualified = db.execute(
             """SELECT COUNT(*) FROM products
                WHERE price >= 32 AND monthly_sold >= 1000
