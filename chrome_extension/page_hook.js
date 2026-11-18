@@ -48,6 +48,18 @@
     return 0;
   }
 
+  function pageSignature(payload) {
+    let nodes = [];
+    if (Array.isArray(payload?.items)) nodes = payload.items;
+    else if (Array.isArray(payload?.data?.units)) nodes = payload.data.units.map((unit) => unit?.item || unit);
+    const ids = nodes.map((node) => {
+      const data = node?.item_data || node?.item_basic || node || {};
+      return data.itemid ?? data.item_id ?? "";
+    }).filter(Boolean);
+    if (!ids.length) return "";
+    return ids.slice(0, 5).concat(ids.slice(-5)).join("|");
+  }
+
   function totalCount(payload) {
     const candidates = [payload?.total_count, payload?.data?.total_count, payload?.data?.total];
     for (const value of candidates) {
@@ -133,6 +145,7 @@
     let captured = canResume ? Math.max(0, Number(command.captured) || 0) : 0;
     let page = Math.floor(offset / limit);
     const currentRunId = ++bulkRunId;
+    const seenPages = new Set();
     bulkRunning = true;
     emitBulkStatus("running", {
       page,
@@ -186,6 +199,20 @@
           bulkRunning = false;
           return;
         }
+
+        const signature = pageSignature(payload);
+        if (signature && seenPages.has(signature)) {
+          bulkRunning = false;
+          emitBulkStatus("done", {
+            page,
+            captured,
+            total,
+            nextOffset: offset,
+            message: `Shopee 从第 ${page + 1} 批开始重复返回，已自动停止并保留前 ${captured} 件`
+          });
+          return;
+        }
+        if (signature) seenPages.add(signature);
 
         publish(requestUrl.href, payload);
         captured += count;
