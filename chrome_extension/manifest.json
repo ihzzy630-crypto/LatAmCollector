@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LatAmCollector Shopee Helper",
-  "version": "0.3.1",
-  "description": "Capture public Shopee Brazil product, sales and review responses into the local LatAmCollector platform.",
+  "version": "0.4.0",
+  "description": "Bulk-capture public Shopee Brazil product lists, sales and reviews into the local LatAmCollector platform.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://shopee.com.br/*",

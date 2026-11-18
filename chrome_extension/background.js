@@ -29,6 +29,21 @@ async function recordError(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "LATAM_BULK_STATUS") {
+    (async () => {
+      const data = message.data && typeof message.data === "object" ? message.data : {};
+      await chrome.storage.local.set({ bulkStatus: data });
+      if (data.status === "running") {
+        await chrome.action.setBadgeBackgroundColor({ color: "#2b6cb0" });
+        await chrome.action.setBadgeText({ text: String(Math.min(Number(data.page || 0), 99)) });
+      } else if (data.status === "done") {
+        await chrome.action.setBadgeBackgroundColor({ color: "#198754" });
+        await chrome.action.setBadgeText({ text: "✓" });
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
   if (message?.type !== "LATAM_CAPTURE") return false;
 
   (async () => {

@@ -664,10 +664,10 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.3.1",
+        "version": "0.4.0",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"},
-        "features": ["静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "features": ["分类列表一键批量采集", "暂停续采", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
     }
 
 

@@ -3,14 +3,22 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body{font-family:"Microsoft YaHei",sans-serif;width:310px;margin:0;padding:18px;color:#17212b;background:#f7f8fa}h1{font-size:17px;margin:0 0 14px}.brand{color:#ef553b}.box{background:white;border:1px solid #e3e7eb;border-radius:10px;padding:13px;margin:10px 0}.row{display:flex;justify-content:space-between;margin:7px 0;font-size:13px}.muted{color:#71808f;font-size:12px;line-height:1.6}.ok{color:#198754}.bad{color:#d83d27}button{width:100%;border:0;border-radius:8px;padding:10px;background:#ef553b;color:white;cursor:pointer;margin-top:8px}code{font-size:11px}
+    body{font-family:"Microsoft YaHei",sans-serif;width:330px;margin:0;padding:18px;color:#17212b;background:#f7f8fa}h1{font-size:17px;margin:0 0 14px}.brand{color:#ef553b}.box{background:white;border:1px solid #e3e7eb;border-radius:10px;padding:13px;margin:10px 0}.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;font-size:13px}.muted{color:#71808f;font-size:12px;line-height:1.6}.ok{color:#198754}.bad{color:#d83d27}.blue{color:#2b6cb0}button{width:100%;border:0;border-radius:8px;padding:10px;background:#ef553b;color:white;cursor:pointer;margin-top:8px}button.secondary{background:#e9edf1;color:#34404c}button:disabled{opacity:.5;cursor:not-allowed}input{width:92px;border:1px solid #d8dee5;border-radius:7px;padding:6px}.actions{display:grid;grid-template-columns:2fr 1fr;gap:7px}.progress{height:7px;background:#edf0f3;border-radius:8px;overflow:hidden;margin:9px 0}.progress i{display:block;height:100%;width:0;background:#ef553b;border-radius:8px;transition:width .2s}code{font-size:11px}
   </style>
 </head>
 <body>
-  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.3.1</small></h1>
+  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.4.0</small></h1>
   <div class="box">
     <div class="row"><span>本地平台</span><b id="platform">检查中…</b></div>
     <div class="row"><span>Shopee 页面</span><b id="page">检查中…</b></div>
+  </div>
+  <div class="box">
+    <b>一键采集当前商品列表</b>
+    <div class="row"><span>本次最多采集</span><label><input id="bulk-max" type="number" value="3000" min="60" max="6000" step="60"> 件</label></div>
+    <div class="progress"><i id="bulk-bar"></i></div>
+    <div class="muted" id="bulk-state">先打开并刷新分类页或搜索结果页</div>
+    <div class="actions"><button id="bulk-start">开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
+    <div class="muted">固定每 3 秒读取一批，自动去重。页面保持打开即可，不需要手点下一页。</div>
   </div>
   <div class="box">
     <div class="row"><span>捕获响应</span><b id="captures">0</b></div>
