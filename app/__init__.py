@@ -1,0 +1,2 @@
+"""LatAm Collector local application."""
+
