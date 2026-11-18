@@ -70,12 +70,17 @@ def product_query(params: dict[str, Any]) -> tuple[str, list[Any]]:
     mapping = {
         "platform": "platform = ?",
         "category": "category = ?",
-        "year": "substr(created_at, 1, 4) = ?",
     }
     for key, clause in mapping.items():
         if params.get(key):
             where.append(clause)
             values.append(params[key])
+    raw_years = str(params.get("years") or params.get("year") or "")
+    years = [value.strip() for value in raw_years.split(",")
+             if len(value.strip()) == 4 and value.strip().isdigit()]
+    if years:
+        where.append("substr(created_at, 1, 4) IN (" + ",".join("?" for _ in years) + ")")
+        values.extend(years)
     if params.get("min_price") not in (None, ""):
         where.append("price >= ?")
         values.append(float(params["min_price"]))
@@ -94,6 +99,7 @@ def products(
     platform: str = "",
     category: str = "",
     year: str = "",
+    years: str = "",
     min_price: str = "",
     min_sales: str = "",
     q: str = "",
@@ -295,7 +301,7 @@ def export_xlsx(kind: str):
 
 @app.get("/api/system")
 def system_info():
-    return {"version": "0.2.0", "database": str(DB_PATH), "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"}}
+    return {"version": "0.2.1", "database": str(DB_PATH), "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"}}
 
 
 def run() -> None:
