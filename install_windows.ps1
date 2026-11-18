@@ -1,7 +1,9 @@
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$InstallRoot = "D:\gpt专用文件\LatAmCollector"
+# Construct the Chinese folder name from Unicode code points so this source file
+# remains plain ASCII and works in Windows PowerShell 5.1.
+$WorkFolder = "gpt" + [char]0x4E13 + [char]0x7528 + [char]0x6587 + [char]0x4EF6
+$InstallRoot = Join-Path ("D:\" + $WorkFolder) "LatAmCollector"
 $RepoZip = "https://github.com/ihzzy630-crypto/LatAmCollector/archive/refs/heads/main.zip"
 $TempRoot = Join-Path $env:TEMP ("LatAmCollector-Setup-" + $PID)
 $ZipPath = Join-Path $TempRoot "LatAmCollector-main.zip"
@@ -23,35 +25,35 @@ function Test-Python312 {
 }
 
 try {
-    Write-Host "LatAmCollector Windows 环境安装程序" -ForegroundColor Green
-    Write-Host "安装目录：$InstallRoot"
+    Write-Host "LatAmCollector Windows environment installer" -ForegroundColor Green
+    Write-Host ("Install directory: " + $InstallRoot)
 
     if (-not (Test-Python312)) {
-        Write-Step "没有检测到 Python 3.12，准备通过 winget 安装"
+        Write-Step "Python 3.12 was not found. Installing it with winget"
         if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-            throw "未检测到 winget。请先从 Microsoft Store 安装“应用安装程序”，然后重新运行。"
+            throw "winget is unavailable. Install App Installer from Microsoft Store, then run this script again."
         }
         & winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements
         if ($LASTEXITCODE -ne 0) {
-            throw "Python 3.12 安装失败，winget 返回代码 $LASTEXITCODE。"
+            throw "Python 3.12 installation failed. winget exit code: $LASTEXITCODE"
         }
         Start-Sleep -Seconds 3
     }
 
     if (-not (Test-Python312)) {
-        throw "Python 3.12 已安装但当前 PowerShell 尚未识别。请关闭 PowerShell，重新打开后再运行本脚本。"
+        throw "Python 3.12 is installed but this PowerShell session cannot see it. Reopen PowerShell and run the script again."
     }
 
-    Write-Step "创建临时目录并下载 GitHub 源码"
+    Write-Step "Downloading the application source from GitHub"
     New-Item -ItemType Directory -Force -Path $TempRoot, $ExtractPath | Out-Null
     Invoke-WebRequest -Uri $RepoZip -OutFile $ZipPath -UseBasicParsing
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath -Force
     $SourceRoot = Join-Path $ExtractPath "LatAmCollector-main"
     if (-not (Test-Path (Join-Path $SourceRoot "launcher.py"))) {
-        throw "下载包结构不正确，没有找到 launcher.py。"
+        throw "The downloaded package is incomplete: launcher.py was not found."
     }
 
-    Write-Step "复制程序文件（保留已有 data 数据库）"
+    Write-Step "Copying files and preserving any existing data folder"
     New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
     Get-ChildItem -Path $SourceRoot -Force | ForEach-Object {
         if ($_.Name -notin @("data", ".venv", ".buildvenv")) {
@@ -59,26 +61,26 @@ try {
         }
     }
 
-    Write-Step "创建独立 Python 虚拟环境"
+    Write-Step "Creating an isolated Python environment"
     $VenvPython = Join-Path $InstallRoot ".venv\Scripts\python.exe"
     if (-not (Test-Path $VenvPython)) {
         & py -3.12 -m venv (Join-Path $InstallRoot ".venv")
         if ($LASTEXITCODE -ne 0) {
-            throw "虚拟环境创建失败。"
+            throw "The Python virtual environment could not be created."
         }
     }
 
-    Write-Step "安装平台依赖，这一步可能需要几分钟"
+    Write-Step "Installing required packages. This may take several minutes"
     & $VenvPython -m pip install --upgrade pip --timeout 120
-    if ($LASTEXITCODE -ne 0) { throw "pip 更新失败。" }
+    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
     & $VenvPython -m pip install -r (Join-Path $InstallRoot "requirements.txt") --timeout 120
-    if ($LASTEXITCODE -ne 0) { throw "依赖安装失败。" }
+    if ($LASTEXITCODE -ne 0) { throw "Package installation failed." }
 
-    Write-Step "检查核心模块"
-    & $VenvPython -c "import fastapi, uvicorn, openpyxl; print('核心模块检查通过')"
-    if ($LASTEXITCODE -ne 0) { throw "核心模块检查失败。" }
+    Write-Step "Checking core modules"
+    & $VenvPython -c "import fastapi, uvicorn, openpyxl; print('Core modules OK')"
+    if ($LASTEXITCODE -ne 0) { throw "Core module check failed." }
 
-    Write-Step "创建桌面快捷方式"
+    Write-Step "Creating a desktop shortcut"
     $Desktop = [Environment]::GetFolderPath("Desktop")
     $ShortcutPath = Join-Path $Desktop "LatAmCollector.lnk"
     $Shell = New-Object -ComObject WScript.Shell
@@ -86,21 +88,21 @@ try {
     $Shortcut.TargetPath = Join-Path $InstallRoot "start_platform.bat"
     $Shortcut.WorkingDirectory = $InstallRoot
     $Shortcut.IconLocation = "$env:SystemRoot\System32\SHELL32.dll,220"
-    $Shortcut.Description = "启动 LatAmCollector 本地采集平台"
+    $Shortcut.Description = "Start the LatAmCollector local platform"
     $Shortcut.Save()
 
-    Write-Step "安装完成"
-    Write-Host "桌面已生成 LatAmCollector 快捷方式。" -ForegroundColor Green
-    Write-Host "平台地址：http://127.0.0.1:8765"
-    Write-Host "数据目录：$InstallRoot\data"
-    Write-Host "正在启动平台……"
+    Write-Step "Installation completed"
+    Write-Host "A LatAmCollector shortcut was created on the desktop." -ForegroundColor Green
+    Write-Host "Platform URL: http://127.0.0.1:8765"
+    Write-Host ("Data directory: " + (Join-Path $InstallRoot "data"))
+    Write-Host "Starting the platform now..."
     Start-Process -FilePath (Join-Path $InstallRoot "start_platform.bat") -WorkingDirectory $InstallRoot
 }
 catch {
     Write-Host ""
-    Write-Host ("安装失败：" + $_.Exception.Message) -ForegroundColor Red
-    Write-Host "请保留这个窗口并截图发给我。"
-    Read-Host "按回车键关闭"
+    Write-Host ("Installation failed: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host "Keep this window open and send a screenshot of the error."
+    Read-Host "Press Enter to close"
     exit 1
 }
 finally {
