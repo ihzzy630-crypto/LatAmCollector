@@ -12,6 +12,17 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Validate Windows installer syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "install_windows.ps1"), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
