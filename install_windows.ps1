@@ -110,4 +110,3 @@ finally {
         Remove-Item -Path $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-
