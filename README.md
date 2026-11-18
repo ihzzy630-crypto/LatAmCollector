@@ -2,6 +2,18 @@
 
 面向巴西跨境电商选品的本地数据管理与采集平台。第一版支持 Shopee 搜索、热门推荐、评论 JSON 导入，商品筛选以及 Excel/CSV 导出。
 
+## PowerShell 一键安装（推荐）
+
+以普通方式打开 Windows PowerShell，依次运行：
+
+```powershell
+$setup = "$env:TEMP\install_latam_collector.ps1"
+Invoke-WebRequest "https://raw.githubusercontent.com/ihzzy630-crypto/LatAmCollector/main/install_windows.ps1" -OutFile $setup
+powershell -ExecutionPolicy Bypass -File $setup
+```
+
+安装脚本会把程序放在 `D:\gpt专用文件\LatAmCollector`，创建独立虚拟环境和桌面快捷方式，并保留已有的 `data` 数据库。请勿使用管理员身份运行，除非公司的软件安装策略明确要求。
+
 ## Windows 直接运行
 
 1. 将整个 `latam_collector` 文件夹复制到 `D:\gpt专用文件\LatAmCollector`。
@@ -30,4 +42,5 @@
 ## 后续接口
 
 采集连接器计划采用独立适配器：Shopee Chrome 采集助手、SHEIN 连接器、Mercado Livre 官方 API/公开数据连接器。网站接口改变时只替换连接器，不修改商品库与任务中心。
+
 
