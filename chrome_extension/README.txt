@@ -1,4 +1,4 @@
-LatAmCollector Chrome Helper v0.2
+LatAmCollector Chrome Helper v0.3
 
 Install:
 1. Open Chrome and visit chrome://extensions
@@ -8,6 +8,6 @@ Install:
 5. Keep LatAmCollector running, open Shopee Brazil, and refresh the page.
 
 Privacy:
-- Captures only JSON responses whose URL contains search_items, recommend_v2, or get_ratings.
+- Captures only supported public product/review responses: search_items, recommend_v2, item/get, pdp/get_pc, or get_ratings.
 - Sends them only to http://127.0.0.1:8765 on this computer.
 - Does not read or transmit cookies, passwords, request headers, or Google account data.

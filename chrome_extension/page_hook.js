@@ -4,7 +4,7 @@
   window.__LATAM_COLLECTOR_HOOKED__ = true;
 
   const EVENT_NAME = "LATAM_COLLECTOR_CAPTURE_V1";
-  const URL_MARKERS = ["search_items", "recommend_v2", "get_ratings"];
+  const URL_MARKERS = ["search_items", "recommend_v2", "get_ratings", "item/get", "pdp/get_pc"];
   const MAX_TEXT_LENGTH = 12 * 1024 * 1024;
 
   function isSupportedUrl(url) {

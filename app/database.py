@@ -46,6 +46,11 @@ def initialize() -> None:
                 monthly_sold INTEGER NOT NULL DEFAULT 0,
                 historical_sold_text TEXT,
                 monthly_sold_text TEXT,
+                historical_sold_estimated INTEGER NOT NULL DEFAULT 1,
+                monthly_sold_estimated INTEGER NOT NULL DEFAULT 1,
+                historical_sold_delta INTEGER NOT NULL DEFAULT 0,
+                monthly_sold_delta INTEGER NOT NULL DEFAULT 0,
+                price_delta REAL NOT NULL DEFAULT 0,
                 rating REAL NOT NULL DEFAULT 0,
                 review_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT,
@@ -54,6 +59,10 @@ def initialize() -> None:
                 product_url TEXT,
                 image_url TEXT,
                 raw_json TEXT,
+                capture_count INTEGER NOT NULL DEFAULT 1,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                note TEXT NOT NULL DEFAULT '',
+                last_changed_at TEXT,
                 imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(platform, shop_id, item_id)
             );
@@ -94,11 +103,42 @@ def initialize() -> None:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS capture_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL,
+                source_url TEXT,
+                product_count INTEGER NOT NULL DEFAULT 0,
+                review_count INTEGER NOT NULL DEFAULT 0,
+                new_product_count INTEGER NOT NULL DEFAULT 0,
+                new_review_count INTEGER NOT NULL DEFAULT 0,
+                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_products_filter
                 ON products(platform, category, price, historical_sold, created_at);
+            CREATE INDEX IF NOT EXISTS idx_products_monthly
+                ON products(monthly_sold, rating, review_count);
             CREATE INDEX IF NOT EXISTS idx_reviews_date ON reviews(review_time);
+            CREATE INDEX IF NOT EXISTS idx_capture_events_date ON capture_events(captured_at);
             """
         )
+
+        # Existing installations are upgraded in place so the user's local data is kept.
+        existing = {row[1] for row in db.execute("PRAGMA table_info(products)").fetchall()}
+        migrations = {
+            "historical_sold_estimated": "INTEGER NOT NULL DEFAULT 1",
+            "monthly_sold_estimated": "INTEGER NOT NULL DEFAULT 1",
+            "historical_sold_delta": "INTEGER NOT NULL DEFAULT 0",
+            "monthly_sold_delta": "INTEGER NOT NULL DEFAULT 0",
+            "price_delta": "REAL NOT NULL DEFAULT 0",
+            "capture_count": "INTEGER NOT NULL DEFAULT 1",
+            "is_favorite": "INTEGER NOT NULL DEFAULT 0",
+            "note": "TEXT NOT NULL DEFAULT ''",
+            "last_changed_at": "TEXT",
+        }
+        for column, definition in migrations.items():
+            if column not in existing:
+                db.execute(f"ALTER TABLE products ADD COLUMN {column} {definition}")
 
 
 def add_log(source: str, message: str, level: str = "INFO") -> None:

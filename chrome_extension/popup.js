@@ -7,9 +7,14 @@ function setStatus(id, text, ok) {
 }
 
 async function refresh() {
+  let serverStats = null;
   try {
     const response = await fetch("http://127.0.0.1:8765/api/system");
     setStatus("platform", response.ok ? "运行中" : "异常", response.ok);
+    if (response.ok) {
+      const statsResponse = await fetch("http://127.0.0.1:8765/api/stats");
+      if (statsResponse.ok) serverStats = await statsResponse.json();
+    }
   } catch (_) {
     setStatus("platform", "未启动", false);
   }
@@ -24,8 +29,8 @@ async function refresh() {
 
   const state = await chrome.storage.local.get({ captureCount: 0, productCount: 0, reviewCount: 0, lastCapture: null, lastError: null });
   document.getElementById("captures").textContent = state.captureCount;
-  document.getElementById("products").textContent = state.productCount;
-  document.getElementById("reviews").textContent = state.reviewCount;
+  document.getElementById("products").textContent = serverStats ? serverStats.products : state.productCount;
+  document.getElementById("reviews").textContent = serverStats ? serverStats.reviews : state.reviewCount;
   const last = document.getElementById("last");
   if (state.lastError) {
     last.textContent = "最近错误：" + state.lastError;
@@ -35,6 +40,6 @@ async function refresh() {
   }
 }
 
-document.getElementById("dashboard").addEventListener("click", () => chrome.tabs.create({ url: "http://127.0.0.1:8765" }));
+document.getElementById("dashboard").addEventListener("click", () => chrome.tabs.create({ url: "http://127.0.0.1:8765/?page=products" }));
 refresh();
 

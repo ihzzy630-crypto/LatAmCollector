@@ -18,6 +18,19 @@ HOME_WORDS = (
     "cozinha", "casa", "limpeza", "organizador", "marmita", "frigideira",
     "decoração", "banheiro", "cama", "toalha", "escova", "pote",
 )
+ELECTRONICS_WORDS = (
+    "fone", "carregador", "smartwatch", "cabo usb", "caixa de som",
+    "eletrônico", "camera", "câmera", "lâmpada led", "lampada led",
+)
+BEAUTY_WORDS = (
+    "maquiagem", "beleza", "skincare", "cabelo", "unha", "perfume",
+    "hidratante", "escova secadora",
+)
+SPORT_WORDS = (
+    "academia", "fitness", "esporte", "bicicleta", "camping", "corrida",
+    "halter", "yoga",
+)
+KIDS_WORDS = ("bebê", "bebe", "infantil", "brinquedo", "criança", "crianca")
 
 
 def _number(value: Any, default: float = 0) -> float:
@@ -34,17 +47,38 @@ def sold_from_text(value: Any) -> int:
         return 0
     if isinstance(value, (int, float)):
         return int(value)
-    text = str(value).lower().replace(".", "").replace(",", ".")
-    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*(mil|mi|k|m)?", text)
+    text = str(value).casefold().replace("\u00a0", " ")
+    match = re.search(r"([0-9][0-9.,]*)\s*(milhões|milhoes|milhão|milhao|mil|mi|k|m)?", text)
     if not match:
         return 0
-    number = float(match.group(1))
+    raw = match.group(1)
     suffix = match.group(2) or ""
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    elif "," in raw:
+        tail = raw.rsplit(",", 1)[1]
+        raw = raw.replace(",", ".") if suffix and len(tail) <= 2 else raw.replace(",", "")
+    elif "." in raw:
+        tail = raw.rsplit(".", 1)[1]
+        if not (suffix and len(tail) <= 2):
+            raw = raw.replace(".", "")
+    number = float(raw)
     if suffix in {"mil", "k"}:
         number *= 1_000
-    elif suffix in {"mi", "m"}:
+    elif suffix in {"mi", "m", "milhão", "milhao", "milhões", "milhoes"}:
         number *= 1_000_000
     return int(number)
+
+
+def shopee_money(value: Any) -> float:
+    """Shopee APIs normally use 1/100000 BRL, while imports may already be BRL."""
+    number = _number(value)
+    if abs(number) >= 100_000:
+        number /= 100_000
+    return round(number, 2)
 
 
 def timestamp_text(value: Any) -> str | None:
@@ -63,6 +97,14 @@ def infer_category(title: str, categories: Any = None) -> str:
         return "女装服装"
     if any(word in lowered for word in HOME_WORDS):
         return "家居百货"
+    if any(word in lowered for word in ELECTRONICS_WORDS):
+        return "数码家电"
+    if any(word in lowered for word in BEAUTY_WORDS):
+        return "美妆个护"
+    if any(word in lowered for word in SPORT_WORDS):
+        return "运动户外"
+    if any(word in lowered for word in KIDS_WORDS):
+        return "母婴玩具"
     return "未分类"
 
 
@@ -78,6 +120,12 @@ def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
         for unit in data["units"]:
             if isinstance(unit, dict) and isinstance(unit.get("item"), dict):
                 yield unit["item"]
+    if isinstance(data, dict) and isinstance(data.get("item"), dict):
+        yield data["item"]
+    if isinstance(data, dict) and (data.get("itemid") is not None or data.get("item_id") is not None):
+        yield data
+    if isinstance(payload.get("item"), dict):
+        yield payload["item"]
     if isinstance(payload.get("items"), list):
         for item in payload["items"]:
             if isinstance(item, dict):
@@ -87,22 +135,27 @@ def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
 def parse_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
     products: list[dict[str, Any]] = []
     for node in iter_product_nodes(payload):
-        data = node.get("item_data") or {}
+        data = node.get("item_data") or node
         asset = node.get("item_card_displayed_asset") or {}
-        item_id = data.get("itemid") or node.get("itemid")
-        shop_id = data.get("shopid") or node.get("shopid")
+        item_id = data.get("itemid") or data.get("item_id") or node.get("itemid")
+        shop_id = data.get("shopid") or data.get("shop_id") or node.get("shopid")
         if item_id is None or shop_id is None:
             continue
         price_info = data.get("item_card_display_price") or {}
         sold_info = data.get("item_card_display_sold_count") or {}
         rating_info = data.get("item_rating") or {}
         shop_info = data.get("shop_data") or {}
-        title = str(asset.get("name") or node.get("display_name") or "未命名商品")
-        raw_price = _number(price_info.get("price") or (asset.get("display_price") or {}).get("price"))
-        historical_text = sold_info.get("historical_sold_count_text") or sold_info.get("display_sold_count_text")
-        monthly_text = sold_info.get("monthly_sold_count_text") or sold_info.get("local_monthly_sold_count_text")
-        historical = int(_number(sold_info.get("historical_sold_count"))) or sold_from_text(historical_text)
-        monthly = int(_number(sold_info.get("monthly_sold_count"))) or sold_from_text(monthly_text)
+        title = str(asset.get("name") or data.get("name") or node.get("display_name") or "未命名商品")
+        raw_price = price_info.get("price") or (asset.get("display_price") or {}).get("price") or data.get("price") or data.get("price_min")
+        historical_text = (sold_info.get("historical_sold_count_text") or
+                           sold_info.get("display_sold_count_text") or data.get("historical_sold_text"))
+        monthly_text = (sold_info.get("monthly_sold_count_text") or
+                        sold_info.get("local_monthly_sold_count_text") or data.get("monthly_sold_text"))
+        historical_raw = (sold_info.get("historical_sold_count") or data.get("historical_sold") or
+                          data.get("sold"))
+        monthly_raw = sold_info.get("monthly_sold_count") or data.get("monthly_sold")
+        historical = int(_number(historical_raw)) if historical_raw is not None else sold_from_text(historical_text)
+        monthly = int(_number(monthly_raw)) if monthly_raw is not None else sold_from_text(monthly_text)
         counts = rating_info.get("rating_count") or []
         review_count = int(_number(counts[0])) if counts else 0
         created_at = timestamp_text(data.get("ctime"))
@@ -113,18 +166,22 @@ def parse_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "shop_id": str(shop_id),
                 "title": title,
                 "category": infer_category(title, data.get("global_cat")),
-                "price": round(raw_price / 100_000, 2),
+                "price": shopee_money(raw_price),
                 "historical_sold": historical,
                 "monthly_sold": monthly,
                 "historical_sold_text": historical_text,
                 "monthly_sold_text": monthly_text,
+                "historical_sold_estimated": int(historical_raw is None and bool(historical_text)),
+                "monthly_sold_estimated": int(monthly_raw is None and bool(monthly_text)),
+                "_historical_available": historical_raw is not None or historical_text is not None,
+                "_monthly_available": monthly_raw is not None or monthly_text is not None,
                 "rating": round(_number(rating_info.get("rating_star")), 3),
                 "review_count": review_count,
                 "created_at": created_at,
-                "shop_name": shop_info.get("shop_name"),
+                "shop_name": shop_info.get("shop_name") or data.get("shop_name"),
                 "shop_location": shop_info.get("shop_location") or asset.get("shop_location"),
                 "product_url": f"https://shopee.com.br/product/{shop_id}/{item_id}",
-                "image_url": image_url(asset.get("image")),
+                "image_url": image_url(asset.get("image") or data.get("image")),
                 "raw_json": json.dumps(node, ensure_ascii=False),
             }
         )
