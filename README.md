@@ -4,6 +4,8 @@
 
 Chrome 采集助手可在正常浏览 Shopee 巴西站时捕获支持的商品与评论 JSON，并发送到本机平台，不读取 Cookie、密码或请求头。
 
+v0.3.1 起，安装器会创建 Windows 登录时的静默启动项。桌面快捷方式会自动检查并启动本地服务，不再要求长期保留 PowerShell 窗口。
+
 ## PowerShell 一键安装（推荐）
 
 以普通方式打开 Windows PowerShell，依次运行：

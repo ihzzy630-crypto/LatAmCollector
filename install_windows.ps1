@@ -24,6 +24,39 @@ function Test-Python312 {
     }
 }
 
+function Stop-ExistingLatAmCollector {
+    $CandidateIds = @()
+    $ServerPidFile = Join-Path $InstallRoot "data\server.pid"
+    if (Test-Path $ServerPidFile) {
+        $ServerIdText = (Get-Content -Path $ServerPidFile -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($ServerIdText -match "^[0-9]+$") {
+            $CandidateIds += [int]$ServerIdText
+        }
+    }
+    try {
+        $ListeningIds = @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop |
+            Select-Object -ExpandProperty OwningProcess)
+        $CandidateIds += $ListeningIds
+    }
+    catch {
+        # The port may be unused or the command may be restricted by company policy.
+    }
+    foreach ($ServerProcessId in ($CandidateIds | Sort-Object -Unique)) {
+        try {
+            $ProcessInfo = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $ServerProcessId) -ErrorAction Stop
+            $CommandLine = [string]$ProcessInfo.CommandLine
+            if ($CommandLine -like "*LatAmCollector*" -and $CommandLine -like "*launcher.py*") {
+                Stop-Process -Id $ServerProcessId -Force -ErrorAction Stop
+                Start-Sleep -Milliseconds 800
+            }
+        }
+        catch {
+            # A stale PID or an already stopped process is safe to ignore.
+        }
+    }
+    Remove-Item -Path $ServerPidFile -Force -ErrorAction SilentlyContinue
+}
+
 try {
     Write-Host "LatAmCollector Windows environment installer" -ForegroundColor Green
     Write-Host ("Install directory: " + $InstallRoot)
@@ -53,6 +86,9 @@ try {
         throw "The downloaded package is incomplete: launcher.py was not found."
     }
 
+    Write-Step "Stopping the previous local service if it is running"
+    Stop-ExistingLatAmCollector
+
     Write-Step "Copying files and preserving any existing data folder"
     New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
     Get-ChildItem -Path $SourceRoot -Force | ForEach-Object {
@@ -81,22 +117,38 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Core module check failed." }
 
     Write-Step "Creating a desktop shortcut"
+    $VenvPythonw = Join-Path $InstallRoot ".venv\Scripts\pythonw.exe"
+    $OpenPlatform = Join-Path $InstallRoot "open_platform.py"
+    $Launcher = Join-Path $InstallRoot "launcher.py"
     $Desktop = [Environment]::GetFolderPath("Desktop")
     $ShortcutPath = Join-Path $Desktop "LatAmCollector.lnk"
     $Shell = New-Object -ComObject WScript.Shell
     $Shortcut = $Shell.CreateShortcut($ShortcutPath)
-    $Shortcut.TargetPath = Join-Path $InstallRoot "start_platform.bat"
+    $Shortcut.TargetPath = $VenvPythonw
+    $Shortcut.Arguments = '"' + $OpenPlatform + '"'
     $Shortcut.WorkingDirectory = $InstallRoot
     $Shortcut.IconLocation = "$env:SystemRoot\System32\SHELL32.dll,220"
     $Shortcut.Description = "Start the LatAmCollector local platform"
     $Shortcut.Save()
 
+    Write-Step "Enabling silent startup when Windows signs in"
+    $StartupFolder = [Environment]::GetFolderPath("Startup")
+    $AutoStartPath = Join-Path $StartupFolder "LatAmCollector-AutoStart.lnk"
+    $AutoStart = $Shell.CreateShortcut($AutoStartPath)
+    $AutoStart.TargetPath = $VenvPythonw
+    $AutoStart.Arguments = '"' + $Launcher + '" --no-browser'
+    $AutoStart.WorkingDirectory = $InstallRoot
+    $AutoStart.IconLocation = "$env:SystemRoot\System32\SHELL32.dll,220"
+    $AutoStart.Description = "Start LatAmCollector silently when Windows signs in"
+    $AutoStart.Save()
+
     Write-Step "Installation completed"
-    Write-Host "A LatAmCollector shortcut was created on the desktop." -ForegroundColor Green
+    Write-Host "A one-click LatAmCollector shortcut was created on the desktop." -ForegroundColor Green
+    Write-Host "Silent startup at Windows sign-in is enabled." -ForegroundColor Green
     Write-Host "Platform URL: http://127.0.0.1:8765"
     Write-Host ("Data directory: " + (Join-Path $InstallRoot "data"))
-    Write-Host "Starting the platform now..."
-    Start-Process -FilePath (Join-Path $InstallRoot "start_platform.bat") -WorkingDirectory $InstallRoot
+    Write-Host "Starting the platform silently now..."
+    Start-Process -FilePath $VenvPythonw -ArgumentList ('"' + $OpenPlatform + '"') -WorkingDirectory $InstallRoot
 }
 catch {
     Write-Host ""

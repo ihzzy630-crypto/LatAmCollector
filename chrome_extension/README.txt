@@ -1,4 +1,4 @@
-LatAmCollector Chrome Helper v0.3
+LatAmCollector Chrome Helper v0.3.1
 
 Install:
 1. Open Chrome and visit chrome://extensions

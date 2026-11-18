@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import math
+import os
 import shutil
 import sys
 import threading
@@ -663,15 +664,25 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.3.0",
+        "version": "0.3.1",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"},
-        "features": ["销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "features": ["静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
     }
 
 
-def run() -> None:
+def run(open_browser: bool = True) -> None:
     initialize()
-    threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
+    pid_file = DB_PATH.parent / "server.pid"
+    pid_file.write_text(str(os.getpid()), encoding="ascii")
+    if open_browser:
+        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
+    finally:
+        try:
+            if pid_file.exists() and pid_file.read_text(encoding="ascii").strip() == str(os.getpid()):
+                pid_file.unlink()
+        except OSError:
+            pass
 
