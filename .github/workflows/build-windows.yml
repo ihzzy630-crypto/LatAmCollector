@@ -22,7 +22,7 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --onefile --name LatAmCollector --add-data "static;static" launcher.py
+        run: pyinstaller --noconfirm --clean --onefile --name LatAmCollector --add-data "static;static" --add-data "chrome_extension;chrome_extension" launcher.py
 
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
@@ -30,4 +30,3 @@ jobs:
           name: LatAmCollector-Windows
           path: dist/LatAmCollector.exe
           if-no-files-found: error
-
