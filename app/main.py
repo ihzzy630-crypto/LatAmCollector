@@ -541,6 +541,12 @@ CAPTURE_URL_MARKERS = {
         "/product/get_goods_review_detail", "/product/get_goods_comment_offset",
         "/category/real_category_goods_list", "/product/get_products_by_keywords",
         "/product/get_goods_detail_static_data", "/product/get_goods_detail_realtime_data",
+        "/api/productlist/firstgold/get", "/category/get_select_product_list",
+        "/category/get_tags_goods_list", "/category/category_daily_new",
+        "/category/get_products_by_discount_list", "/product/search/getpregoodscomponent",
+        "/product/search/getsearchcontentcarrier", "/search/card/non_category_by_keyword",
+        "/search/card/non_category_by_keywords", "/navigation-api/store/new-arrivals",
+        "/store-api/store/category/products", "/api/ccc/store/product/query",
         "/__latam_collector_dom__/",
     ),
 }
@@ -702,7 +708,7 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.5.0",
+        "version": "0.5.1",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
         "features": ["Shopee/SHEIN 列表批量采集", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],

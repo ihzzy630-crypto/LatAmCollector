@@ -239,7 +239,16 @@ SHEIN_PRICE_KEYS = (
 )
 SHEIN_SOLD_TEXT_KEYS = (
     "sold_num_text", "soldNumText", "sales_text", "salesText", "sold_text",
-    "sale_count_text", "sales_label", "sold_num", "soldNum", "sales_num", "salesNum",
+    "sale_count_text", "saleCountText", "sales_label", "salesLabel",
+    "selling_proposition", "sellingProposition", "selling_point", "sellingPoint",
+    "sold_num", "soldNum", "sales_num", "salesNum", "sale_num", "saleNum",
+    "sold_count", "soldCount", "sale_count", "saleCount", "total_sales", "totalSales",
+    "product_sales", "productSales", "sales_volume", "salesVolume",
+)
+SHEIN_SOLD_NUMBER_KEYS = (
+    "sold_num", "soldNum", "sales_num", "salesNum", "sale_num", "saleNum",
+    "sold_count", "soldCount", "sale_count", "saleCount", "total_sales", "totalSales",
+    "product_sales", "productSales", "sales_volume", "salesVolume",
 )
 SHEIN_REVIEW_ID_KEYS = ("comment_id", "commentId", "review_id", "reviewId")
 
@@ -260,6 +269,53 @@ def _first(node: dict[str, Any], keys: Iterable[str], default: Any = None) -> An
         if value not in (None, "", [], {}):
             return value
     return default
+
+
+def _deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> None:
+    for key, value in extra.items():
+        if key not in base or base[key] in (None, "", [], {}):
+            base[key] = value
+        elif isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+
+
+def _find_shein_sold_value(node: dict[str, Any]) -> Any:
+    for key in SHEIN_SOLD_NUMBER_KEYS:
+        value = node.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+        if isinstance(value, str) and re.fullmatch(r"\s*[0-9]+\s*", value):
+            return int(value)
+
+    direct = _first(node, SHEIN_SOLD_TEXT_KEYS)
+    if isinstance(direct, str):
+        match = re.search(
+            r"[0-9][0-9.,]*\s*(?:k|mil|mi|m)?\+?\s*(?:vendid[oa]s?|sold)",
+            direct,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(0)
+
+    def walk_strings(value: Any) -> Iterable[str]:
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for child in value.values():
+                yield from walk_strings(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from walk_strings(child)
+
+    for text in walk_strings(node):
+        match = re.search(
+            r"[0-9][0-9.,]*\s*(?:k|mil|mi|m)?\+?\s*(?:vendid[oa]s?|sold)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(0)
+    return None
 
 
 def _localized_number(value: Any, default: float = 0) -> float:
@@ -352,20 +408,27 @@ def _shein_product_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
         products = data.get("products") if isinstance(data, dict) else None
         return [item for item in products or [] if isinstance(item, dict)]
 
-    best: dict[str, tuple[int, dict[str, Any]]] = {}
+    grouped: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for node in _walk_dicts(payload):
         item_id = _first(node, SHEIN_PRODUCT_ID_KEYS)
         if item_id is None:
             continue
         has_name = _first(node, SHEIN_PRODUCT_NAME_KEYS) is not None
         has_price = _first(node, SHEIN_PRICE_KEYS) is not None
-        if not (has_name or has_price):
-            continue
         score = len(node) + (30 if has_name else 0) + (20 if has_price else 0)
         key = str(item_id)
-        if key not in best or score > best[key][0]:
-            best[key] = (score, node)
-    return [entry[1] for entry in best.values()]
+        grouped.setdefault(key, []).append((score, node))
+
+    merged: list[dict[str, Any]] = []
+    for entries in grouped.values():
+        if not any(_first(node, SHEIN_PRODUCT_NAME_KEYS) is not None or _first(node, SHEIN_PRICE_KEYS) is not None
+                   for _, node in entries):
+            continue
+        result: dict[str, Any] = {}
+        for _, node in sorted(entries, key=lambda entry: entry[0], reverse=True):
+            _deep_merge(result, node)
+        merged.append(result)
+    return merged
 
 
 def parse_shein_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -377,7 +440,7 @@ def parse_shein_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
         item_id = str(item_id_value)
         title = str(_first(node, SHEIN_PRODUCT_NAME_KEYS, "未命名商品"))
         shop_id = str(_first(node, ("mall_code", "mallCode", "mall_id", "store_id", "seller_id"), "shein"))
-        sold_value = _first(node, SHEIN_SOLD_TEXT_KEYS)
+        sold_value = _find_shein_sold_value(node)
         historical_text = str(sold_value) if sold_value not in (None, "") else None
         historical_raw = sold_value if isinstance(sold_value, (int, float)) and not isinstance(sold_value, bool) else None
         monthly_value = _first(node, ("monthly_sold", "monthlySold", "monthly_sales", "month_sales", "monthly_sold_text"))

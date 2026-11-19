@@ -13,7 +13,13 @@
     "/api/comment/abccommentimages/query", "/api/comment/abccommentsummary/get",
     "/product/get_goods_review_detail", "/product/get_goods_comment_offset",
     "/category/real_category_goods_list", "/product/get_products_by_keywords",
-    "/product/get_goods_detail_static_data", "/product/get_goods_detail_realtime_data"
+    "/product/get_goods_detail_static_data", "/product/get_goods_detail_realtime_data",
+    "/api/productlist/firstgold/get", "/category/get_select_product_list",
+    "/category/get_tags_goods_list", "/category/category_daily_new",
+    "/category/get_products_by_discount_list", "/product/search/getpregoodscomponent",
+    "/product/search/getsearchcontentcarrier", "/search/card/non_category_by_keyword",
+    "/search/card/non_category_by_keywords", "/navigation-api/store/new-arrivals",
+    "/store-api/store/category/products", "/api/ccc/store/product/query"
   ];
   const MAX_TEXT_LENGTH = 12 * 1024 * 1024;
   const SHOPEE_INTERVAL_MS = 3000;
@@ -21,8 +27,7 @@
   const SHEIN_JOB_KEY = "LATAM_COLLECTOR_SHEIN_BULK_V1";
   let lastSearchUrl = "";
   let lastSearchTotal = 0;
-  let lastDomSignature = "";
-  const passiveSheinIds = new Set();
+  const passiveSheinFingerprints = new Map();
   let domTimer = 0;
   let bulkRunId = 0;
   let bulkRunning = false;
@@ -162,7 +167,18 @@
   }
 
   function sheinCard(anchor) {
-    return anchor.closest('[data-goods-id],[data-product-id],[class*="product-card" i],[class*="product-item" i],[class*="goods-item" i],li') || anchor.parentElement;
+    const fallback = anchor.closest('[data-goods-id],[data-product-id],[class*="product-card" i],[class*="product-item" i],[class*="goods-item" i],li') || anchor.parentElement;
+    let current = anchor;
+    for (let depth = 0; depth < 8 && current && current !== document.body; depth += 1) {
+      const productLinks = current.querySelectorAll?.('a[href*="-p-"],a[href*="goods_id="]') || [];
+      if (productLinks.length > 4) break;
+      const text = textOf(current);
+      const hasPrice = /R\$\s*[0-9]/i.test(text);
+      const hasSales = /[0-9][0-9.,]*\s*(?:k|mil|mi|m)?\+?\s*vendid[oa]s?/i.test(text);
+      if (hasPrice && hasSales) return current;
+      current = current.parentElement;
+    }
+    return fallback;
   }
 
   function firstText(root, selectors) {
@@ -225,13 +241,17 @@
   function passiveSheinCapture() {
     if (bulkRunning || isSheinChallenge()) return;
     const products = scanSheinProducts();
-    const signature = products.map((item) => item.goods_id).sort().join("|");
-    if (!products.length || signature === lastDomSignature) return;
-    lastDomSignature = signature;
-    const fresh = products.filter((item) => !passiveSheinIds.has(item.goods_id));
-    if (!fresh.length) return;
-    for (const item of fresh) passiveSheinIds.add(item.goods_id);
-    publishSheinDom(fresh);
+    const changed = products.filter((item) => {
+      const fingerprint = [
+        item.goods_name, item.sale_price_text, item.sold_num_text,
+        item.comment_rank_average, item.product_url
+      ].join("|");
+      if (passiveSheinFingerprints.get(item.goods_id) === fingerprint) return false;
+      passiveSheinFingerprints.set(item.goods_id, fingerprint);
+      return true;
+    });
+    if (!changed.length) return;
+    publishSheinDom(changed);
     emitBulkStatus("ready", {
       platform: "shein", page: 0, captured: 0, nextOffset: 0,
       sourceKey: sheinSourceKey(), message: `已识别当前 SHEIN 页面 ${products.length} 件商品`

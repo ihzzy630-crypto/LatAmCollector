@@ -104,6 +104,44 @@ def test_shein_api_product_and_millisecond_timestamp():
     assert item["created_at"].startswith("2024-")
 
 
+def test_shein_sales_label_can_arrive_in_separate_nested_node():
+    payload = {
+        "data": {
+            "items": [
+                {
+                    "goods_id": "777",
+                    "goods_name": "Calça feminina",
+                    "salePrice": {"amount": "53.93"},
+                },
+                {
+                    "goods_id": "777",
+                    "sellingPoint": {"labels": [{"text": "1,9k+ vendido"}]},
+                },
+            ]
+        }
+    }
+    item = parse_products(payload, "shein")[0]
+    assert item["historical_sold"] == 1900
+    assert item["historical_sold_text"] == "1,9k+ vendido"
+    assert item["historical_sold_estimated"] == 1
+
+
+def test_shein_numeric_string_sales_are_exact():
+    payload = {
+        "data": {
+            "goods": [{
+                "goods_id": "778",
+                "goods_name": "Blusa feminina",
+                "sale_num": "2300",
+                "salePrice": {"amount": "25.50"},
+            }]
+        }
+    }
+    item = parse_products(payload, "shein")[0]
+    assert item["historical_sold"] == 2300
+    assert item["historical_sold_estimated"] == 0
+
+
 def test_shein_reviews():
     payload = {
         "data": {
