@@ -1,4 +1,4 @@
-LatAmCollector Chrome Helper v0.5.1
+LatAmCollector Chrome Helper v0.5.2
 
 Install:
 1. Open Chrome and visit chrome://extensions
@@ -12,4 +12,4 @@ Privacy:
 - Captures only supported public Shopee/SHEIN product and review responses, plus public SHEIN product cards already rendered on the page.
 - Sends them only to http://127.0.0.1:8765 on this computer.
 - Does not read or transmit cookies, passwords, request headers, or Google account data.
-- Bulk capture is user-initiated and rate-limited. SHEIN uses ordinary scrolling/pagination and stops if a human-verification page appears.
+- Bulk capture is user-initiated and rate-limited. SHEIN uses conservative scrolling/pagination, only follows real pagination controls, and safely pauses on verification, empty-result, blocked, or stalled pages.

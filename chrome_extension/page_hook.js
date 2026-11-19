@@ -23,7 +23,10 @@
   ];
   const MAX_TEXT_LENGTH = 12 * 1024 * 1024;
   const SHOPEE_INTERVAL_MS = 3000;
-  const SHEIN_SCROLL_INTERVAL_MS = 1200;
+  const SHEIN_SCROLL_MIN_MS = 2600;
+  const SHEIN_SCROLL_MAX_MS = 4200;
+  const SHEIN_PAGE_PAUSE_MIN_MS = 6500;
+  const SHEIN_PAGE_PAUSE_MAX_MS = 10000;
   const SHEIN_JOB_KEY = "LATAM_COLLECTOR_SHEIN_BULK_V1";
   let lastSearchUrl = "";
   let lastSearchTotal = 0;
@@ -61,11 +64,35 @@
     return platformFromUrl(url) === "shopee" && String(url).toLowerCase().includes("search_items");
   }
 
+  function sheinPageIssue() {
+    if (platformFromUrl(location.href) !== "shein") return "";
+    const path = location.pathname.toLowerCase();
+    const text = String(document.body?.innerText || "").slice(0, 10000).replace(/\s+/g, " ").toLowerCase();
+    if (path.includes("/risk/challenge") || text.includes("verificar que você é humano") ||
+        text.includes("eu sou humano") || text.includes("verify you are human") || text.includes("captcha")) {
+      return "challenge";
+    }
+    const hasProducts = Boolean(document.querySelector('a[href*="-p-"],a[href*="goods_id="],a[data-goods-id]'));
+    if (text.includes("nenhum artigo encontrado") ||
+        (text.includes("por favor tente outras opções") && text.includes("ooops"))) {
+      return "empty";
+    }
+    if (!hasProducts && (text.includes("acesso negado") || text.includes("access denied") ||
+        text.includes("atividade incomum") || text.includes("unusual activity") || text.includes("too many requests"))) {
+      return "blocked";
+    }
+    return "";
+  }
+
   function isSheinChallenge() {
-    if (platformFromUrl(location.href) !== "shein") return false;
-    if (location.pathname.toLowerCase().includes("/risk/challenge")) return true;
-    const text = String(document.body?.innerText || "").slice(0, 6000).toLowerCase();
-    return text.includes("verificar que você é humano") || text.includes("eu sou humano") || text.includes("verify you are human");
+    return sheinPageIssue() === "challenge";
+  }
+
+  function sheinIssueMessage(issue) {
+    if (issue === "challenge") return "SHEIN 要求人工验证，任务已安全暂停；请手动完成验证后再继续";
+    if (issue === "empty") return "SHEIN 返回了空结果页，可能是临时限流或列表链接失效；任务已暂停，请点 Volte 返回并稍后继续";
+    if (issue === "blocked") return "SHEIN 暂时拒绝了页面访问；任务已暂停，请等待几分钟后手动刷新再继续";
+    return "";
   }
 
   function productCount(payload) {
@@ -151,6 +178,12 @@
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
+  function pacedDelay(minimum, maximum) {
+    const low = Math.max(0, Number(minimum) || 0);
+    const high = Math.max(low, Number(maximum) || low);
+    return delay(Math.floor(low + Math.random() * (high - low + 1)));
+  }
+
   function textOf(element) {
     return String(element?.textContent || "").replace(/\s+/g, " ").trim();
   }
@@ -190,7 +223,7 @@
   }
 
   function scanSheinProducts() {
-    if (platformFromUrl(location.href) !== "shein" || isSheinChallenge()) return [];
+    if (platformFromUrl(location.href) !== "shein" || sheinPageIssue()) return [];
     const links = document.querySelectorAll('a[href*="-p-"],a[href*="goods_id="],a[data-goods-id]');
     const found = new Map();
     const category = firstText(document, ["h1", '[class*="category-title" i]']) || document.title;
@@ -239,7 +272,7 @@
   }
 
   function passiveSheinCapture() {
-    if (bulkRunning || isSheinChallenge()) return;
+    if (bulkRunning || sheinPageIssue()) return;
     const products = scanSheinProducts();
     const changed = products.filter((item) => {
       const fingerprint = [
@@ -360,7 +393,8 @@
     let previousCount = 0;
     const collected = new Map();
     for (let round = 0; round < 80 && bulkRunning && currentRunId === bulkRunId; round += 1) {
-      if (isSheinChallenge()) throw new Error("SHEIN 要求人工验证，任务已安全停止；请在正常页面通过后再重新开始");
+      const issue = sheinPageIssue();
+      if (issue) throw new Error(sheinIssueMessage(issue));
       for (const item of scanSheinProducts()) collected.set(item.goods_id, item);
       const visibleUnique = collected.size;
       const height = Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
@@ -370,8 +404,10 @@
         message: `SHEIN 第 ${job.page + 1} 页已加载 ${visibleUnique} 件，正在自动滚动…`
       });
       if (job.seenIds.length + visibleUnique >= job.maxItems) break;
-      window.scrollTo(0, height);
-      await delay(SHEIN_SCROLL_INTERVAL_MS);
+      window.scrollTo({ top: height, behavior: "smooth" });
+      await pacedDelay(SHEIN_SCROLL_MIN_MS, SHEIN_SCROLL_MAX_MS);
+      const issueAfterScroll = sheinPageIssue();
+      if (issueAfterScroll) throw new Error(sheinIssueMessage(issueAfterScroll));
       const nextHeight = Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0);
       for (const item of scanSheinProducts()) collected.set(item.goods_id, item);
       const nextCount = collected.size;
@@ -386,32 +422,46 @@
 
   function nextSheinPageTarget() {
     const candidates = [...document.querySelectorAll(
-      'a[rel="next"],button[aria-label],[class*="pagination" i] a,[class*="pagination" i] button,a[aria-label]'
+      'a[rel="next"],[class*="pagination" i] a,[class*="pagination" i] button,[id*="pagination" i] a,[id*="pagination" i] button,nav[aria-label*="pag" i] a,nav[aria-label*="pag" i] button'
     )];
     for (const element of candidates) {
+      const inPagination = element.matches('a[rel="next"]') || Boolean(element.closest(
+        '[class*="pagination" i],[id*="pagination" i],nav[aria-label*="pag" i]'
+      ));
+      if (!inPagination) continue;
       const label = [textOf(element), element.getAttribute("aria-label"), element.getAttribute("title"), element.className]
         .filter(Boolean).join(" ");
       if (!/(pr[oó]xim|seguinte|next|pagination-next|\u203a|\u00bb)/i.test(label)) continue;
       if (element.disabled || element.getAttribute("aria-disabled") === "true" || String(element.className).toLowerCase().includes("disabled")) continue;
       const href = element.tagName === "A" ? element.href : "";
       if (href && platformFromUrl(href) !== "shein") continue;
+      if (href && (href === location.href || sheinSourceKey(href) !== sheinSourceKey(location.href))) continue;
       return { element, href };
     }
     return null;
   }
 
   async function waitForSheinPageChange(previousSignature) {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await delay(600);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await delay(800);
+      const issue = sheinPageIssue();
+      if (issue) throw new Error(sheinIssueMessage(issue));
       const signature = scanSheinProducts().map((item) => item.goods_id).slice(0, 8).join("|");
-      if (signature && signature !== previousSignature) return;
+      if (signature && signature !== previousSignature) return true;
     }
+    return false;
   }
 
   async function runSheinBulk(command) {
-    if (isSheinChallenge()) {
-      clearSheinJob();
-      emitBulkStatus("error", { platform: "shein", message: "当前是 SHEIN 人机验证页；请正常完成验证并回到商品列表后再开始" });
+    const initialIssue = sheinPageIssue();
+    if (initialIssue) {
+      let stored = null;
+      try { stored = JSON.parse(sessionStorage.getItem(SHEIN_JOB_KEY) || "null"); } catch (_) {}
+      if (stored) { stored.running = false; saveSheinJob(stored); }
+      emitBulkStatus("error", {
+        platform: "shein", captured: stored?.seenIds?.length || 0,
+        nextOffset: stored?.seenIds?.length || 0, message: sheinIssueMessage(initialIssue)
+      });
       return;
     }
     const job = loadSheinJob(command);
@@ -462,15 +512,21 @@
           return;
         }
         const previousSignature = products.map((item) => item.goods_id).slice(0, 8).join("|");
-        emitBulkStatus("running", { platform: "shein", page: job.page, captured: job.captured, nextOffset: job.captured, message: `已保存 ${job.captured} 件，正在进入下一页…` });
+        emitBulkStatus("running", { platform: "shein", page: job.page, captured: job.captured, nextOffset: job.captured, message: `已保存 ${job.captured} 件，安全间隔后进入下一页…` });
         window.scrollTo(0, 0);
         saveSheinJob(job);
+        await pacedDelay(SHEIN_PAGE_PAUSE_MIN_MS, SHEIN_PAGE_PAUSE_MAX_MS);
+        if (!bulkRunning || currentRunId !== bulkRunId) return;
+        const issueBeforePage = sheinPageIssue();
+        if (issueBeforePage) throw new Error(sheinIssueMessage(issueBeforePage));
         if (next.href) {
           location.assign(next.href);
           return;
         }
         next.element.click();
-        await waitForSheinPageChange(previousSignature);
+        const changed = await waitForSheinPageChange(previousSignature);
+        if (!changed) throw new Error("SHEIN 下一页在 24 秒内没有加载，任务已暂停，避免连续重复点击");
+        await pacedDelay(SHEIN_SCROLL_MIN_MS, SHEIN_SCROLL_MAX_MS);
       }
     } catch (error) {
       job.running = false;
@@ -557,12 +613,17 @@
 
   function initializeSheinPage() {
     if (platformFromUrl(location.href) !== "shein") return;
-    if (isSheinChallenge()) {
+    const issue = sheinPageIssue();
+    if (issue) {
       let job = null;
       try { job = JSON.parse(sessionStorage.getItem(SHEIN_JOB_KEY) || "null"); } catch (_) {}
       if (job?.running) {
-        clearSheinJob();
-        emitBulkStatus("error", { platform: "shein", captured: job.seenIds?.length || 0, message: "SHEIN 出现人机验证，批量任务已安全停止" });
+        job.running = false;
+        saveSheinJob(job);
+        emitBulkStatus("error", {
+          platform: "shein", captured: job.seenIds?.length || 0, nextOffset: job.seenIds?.length || 0,
+          message: sheinIssueMessage(issue)
+        });
       }
       return;
     }
@@ -572,7 +633,7 @@
     let job = null;
     try { job = JSON.parse(sessionStorage.getItem(SHEIN_JOB_KEY) || "null"); } catch (_) {}
     if (job?.running && job.sourceKey === sheinSourceKey()) {
-      setTimeout(() => runSheinBulk({ resume: true, maxItems: job.maxItems }), 1600);
+      setTimeout(() => runSheinBulk({ resume: true, maxItems: job.maxItems }), 4500 + Math.floor(Math.random() * 2500));
     }
   }
 
