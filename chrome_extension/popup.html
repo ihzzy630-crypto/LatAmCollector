@@ -7,18 +7,18 @@
   </style>
 </head>
 <body>
-  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.4.0</small></h1>
+  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.5.0</small></h1>
   <div class="box">
     <div class="row"><span>本地平台</span><b id="platform">检查中…</b></div>
-    <div class="row"><span>Shopee 页面</span><b id="page">检查中…</b></div>
+    <div class="row"><span id="page-name">采集页面</span><b id="page">检查中…</b></div>
   </div>
   <div class="box">
     <b>一键采集当前商品列表</b>
-    <div class="row"><span>本次最多采集</span><label><input id="bulk-max" type="number" value="3000" min="60" max="6000" step="60"> 件</label></div>
+    <div class="row"><span>本次最多采集</span><label><input id="bulk-max" type="number" value="3000" min="20" max="6000" step="20"> 件</label></div>
     <div class="progress"><i id="bulk-bar"></i></div>
     <div class="muted" id="bulk-state">先打开并刷新分类页或搜索结果页</div>
     <div class="actions"><button id="bulk-start">开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
-    <div class="muted">固定每 3 秒读取一批，自动去重。页面保持打开即可，不需要手点下一页。</div>
+    <div class="muted" id="bulk-help">自动限速、滚动/翻页并去重；页面保持打开即可。遇到人机验证会立即停止。</div>
   </div>
   <div class="box">
     <div class="row"><span>捕获响应</span><b id="captures">0</b></div>
@@ -26,7 +26,7 @@
     <div class="row"><span>本地评论库</span><b id="reviews">0</b></div>
     <div class="muted" id="last">尚未捕获数据</div>
   </div>
-  <div class="muted">保持本地平台运行，打开或刷新 Shopee 的分类页、商品页或评论区。销量控制、可信度和趋势在本地“选品雷达”中设置。助手不读取 Cookie 或密码。</div>
+  <div class="muted">保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站的分类页、搜索页、商品页或评论区。助手只整理页面公开响应，不读取密码。</div>
   <button id="dashboard">打开选品雷达</button>
   <script src="popup.js"></script>
 </body>

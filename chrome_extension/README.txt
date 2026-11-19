@@ -1,15 +1,15 @@
-LatAmCollector Chrome Helper v0.4.0
+LatAmCollector Chrome Helper v0.5.0
 
 Install:
 1. Open Chrome and visit chrome://extensions
 2. Enable Developer mode in the top-right corner.
 3. Click Load unpacked.
 4. Select this chrome_extension folder.
-5. Keep LatAmCollector running, open Shopee Brazil, and refresh the page.
+5. Keep LatAmCollector running, open Shopee or SHEIN Brazil, and refresh the page.
 6. On a category/search page, open the extension and click the bulk capture button.
 
 Privacy:
-- Captures only supported public product/review responses: search_items, recommend_v2, item/get, pdp/get_pc, or get_ratings.
+- Captures only supported public Shopee/SHEIN product and review responses, plus public SHEIN product cards already rendered on the page.
 - Sends them only to http://127.0.0.1:8765 on this computer.
 - Does not read or transmit cookies, passwords, request headers, or Google account data.
-- Bulk list capture is user-initiated, rate-limited to one request every three seconds, and stops on access-control or rate-limit errors.
+- Bulk capture is user-initiated and rate-limited. SHEIN uses ordinary scrolling/pagination and stops if a human-verification page appears.

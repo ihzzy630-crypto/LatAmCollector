@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "LatAmCollector Shopee Helper",
-  "version": "0.4.0",
-  "description": "Bulk-capture public Shopee Brazil product lists, sales and reviews into the local LatAmCollector platform.",
+  "name": "LatAmCollector Brazil Helper",
+  "version": "0.5.0",
+  "description": "Capture public Shopee and SHEIN Brazil product lists, sales and reviews into the local LatAmCollector platform.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://shopee.com.br/*",
     "https://*.shopee.com.br/*",
+    "https://br.shein.com/*",
+    "https://*.br.shein.com/*",
     "http://127.0.0.1:8765/*"
   ],
   "background": {
@@ -18,13 +20,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://shopee.com.br/*", "https://*.shopee.com.br/*"],
+      "matches": ["https://shopee.com.br/*", "https://*.shopee.com.br/*", "https://br.shein.com/*", "https://*.br.shein.com/*"],
       "js": ["page_hook.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://shopee.com.br/*", "https://*.shopee.com.br/*"],
+      "matches": ["https://shopee.com.br/*", "https://*.shopee.com.br/*", "https://br.shein.com/*", "https://*.br.shein.com/*"],
       "js": ["bridge.js"],
       "run_at": "document_start"
     }

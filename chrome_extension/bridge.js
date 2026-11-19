@@ -9,7 +9,10 @@
       const data = JSON.parse(event.detail);
       if (!data || typeof data !== "object") return;
       const url = new URL(String(data.source_url || ""));
-      if (!(url.hostname === "shopee.com.br" || url.hostname.endsWith(".shopee.com.br"))) return;
+      const host = url.hostname.toLowerCase();
+      const allowed = host === "shopee.com.br" || host.endsWith(".shopee.com.br") ||
+        host === "br.shein.com" || host.endsWith(".br.shein.com");
+      if (!allowed) return;
       chrome.runtime.sendMessage({ type: "LATAM_CAPTURE", data });
     } catch (_) {
       // Discard malformed page events.

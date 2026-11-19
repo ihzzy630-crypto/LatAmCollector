@@ -1,8 +1,8 @@
 # LatAm Collector
 
-面向巴西跨境电商选品的本地数据管理与采集平台。v0.4 支持 Shopee 分类/搜索结果一键批量分页采集、暂停续采、销量口径控制、趋势追踪、选品参考分和消费者声音分析。
+面向巴西跨境电商选品的本地数据管理与采集平台。v0.5 支持 Shopee 与 SHEIN 巴西站商品/评论采集、列表批量滚动与分页、暂停续采、销量口径控制、趋势追踪、选品参考分和消费者声音分析。
 
-Chrome 采集助手可在正常浏览 Shopee 巴西站时捕获支持的商品与评论 JSON，并发送到本机平台，不读取 Cookie、密码或请求头。
+Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的公开商品与评论响应，并发送到本机平台，不读取密码或请求头。
 
 v0.3.1 起，安装器会创建 Windows 登录时的静默启动项。桌面快捷方式会自动检查并启动本地服务，不再要求长期保留 PowerShell 窗口。
 
@@ -23,7 +23,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 1. 将整个 `latam_collector` 文件夹复制到 `D:\gpt专用文件\LatAmCollector`。
 2. 双击 `run_windows.bat`。
 3. 首次运行会安装依赖，之后浏览器自动打开 `http://127.0.0.1:8765`。
-4. 在“数据导入”页面选择 Shopee 原始 JSON。
+4. 在“数据导入”页面选择 Shopee 或 SHEIN 原始 JSON。
 
 ## 生成 EXE
 
@@ -37,6 +37,9 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 - Shopee `search_items` 和 `recommend_v2` 商品数据解析
 - Shopee `get_ratings` 评论数据解析
+- SHEIN 商品列表卡片与公开商品接口解析
+- SHEIN 公开评论接口解析
+- SHEIN 自动滚动、自动寻找下一页、重复页去重和验证页安全停止
 - 月销量/累计销量口径切换、上下限、增长量与可信度筛选
 - 价格区间、评分、评论数、上架年份、地区、分类和关键词筛选
 - 同一商品重复采集后的销量、月销和价格变化追踪
@@ -56,9 +59,9 @@ powershell -ExecutionPolicy Bypass -File $setup
 2. 打开右上角“开发者模式”。
 3. 点击“加载已解压的扩展程序”。
 4. 选择 `D:\gpt专用文件\LatAmCollector\chrome_extension`。
-5. 保持本地平台运行，打开或刷新 Shopee 巴西站页面。
+5. 保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站页面。
 
 ## 后续接口
 
-采集连接器计划采用独立适配器：Shopee Chrome 采集助手、SHEIN 连接器、Mercado Livre 官方 API/公开数据连接器。网站接口改变时只替换连接器，不修改商品库与任务中心。
+采集连接器采用独立适配器：Shopee 与 SHEIN 共用 Chrome 采集助手，Mercado Livre 后续优先接官方 API/公开数据连接器。网站接口改变时只替换连接器，不修改商品库与任务中心。
 

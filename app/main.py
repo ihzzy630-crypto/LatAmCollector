@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from openpyxl import Workbook
 
 from .database import DB_PATH, add_log, connect, initialize
-from .parser import parse_products, parse_reviews
+from .parser import detect_platform, parse_products, parse_reviews
 
 
 def resource_path(relative: str) -> Path:
@@ -96,7 +96,7 @@ def product_query(params: dict[str, Any]) -> tuple[str, list[Any]]:
     years = [value.strip() for value in raw_years.split(",")
              if len(value.strip()) == 4 and value.strip().isdigit()]
     if years:
-        where.append("substr(created_at, 1, 4) IN (" + ",".join("?" for _ in years) + ")")
+        where.append("(substr(created_at, 1, 4) IN (" + ",".join("?" for _ in years) + ") OR created_at IS NULL OR created_at='')")
         values.extend(years)
     if params.get("min_price") not in (None, ""):
         where.append("price >= ?")
@@ -243,7 +243,8 @@ def product_options():
     with connect() as db:
         categories = [row[0] for row in db.execute("SELECT DISTINCT category FROM products WHERE category<>'' ORDER BY category").fetchall()]
         locations = [row[0] for row in db.execute("SELECT DISTINCT shop_location FROM products WHERE shop_location IS NOT NULL AND shop_location<>'' ORDER BY shop_location LIMIT 100").fetchall()]
-    return {"categories": categories, "locations": locations}
+        platforms = [row[0] for row in db.execute("SELECT DISTINCT platform FROM products ORDER BY platform").fetchall()]
+    return {"categories": categories, "locations": locations, "platforms": platforms}
 
 
 @app.patch("/api/products/{product_id}")
@@ -298,6 +299,7 @@ def enrich_review(item: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/reviews")
 def reviews(
+    platform: str = "",
     year_from: int = 2025,
     year_to: int = 2026,
     min_rating: int = 0,
@@ -314,6 +316,9 @@ def reviews(
     page = max(page, 1)
     where = ["CAST(substr(r.review_time,1,4) AS INTEGER) BETWEEN ? AND ?", "r.rating BETWEEN ? AND ?"]
     values: list[Any] = [year_from, year_to, min_rating, max_rating]
+    if platform:
+        where.append("r.platform = ?")
+        values.append(platform)
     if q:
         where.append("r.comment LIKE ?")
         values.append("%" + q + "%")
@@ -349,12 +354,17 @@ def reviews(
 
 
 @app.get("/api/review-insights")
-def review_insights(year_from: int = 2025, year_to: int = 2026):
+def review_insights(year_from: int = 2025, year_to: int = 2026, platform: str = ""):
+    where = "CAST(substr(review_time,1,4) AS INTEGER) BETWEEN ? AND ?"
+    values: list[Any] = [year_from, year_to]
+    if platform:
+        where += " AND platform = ?"
+        values.append(platform)
     with connect() as db:
         rows = db.execute(
             """SELECT rating, comment, media_count FROM reviews
-               WHERE CAST(substr(review_time,1,4) AS INTEGER) BETWEEN ? AND ?""",
-            (year_from, year_to),
+               WHERE """ + where,
+            values,
         ).fetchall()
     sentiments = {"正向": 0, "中性": 0, "负向": 0}
     stars = {str(i): 0 for i in range(1, 6)}
@@ -386,8 +396,15 @@ def review_insights(year_from: int = 2025, year_to: int = 2026):
 def import_payload(payload: dict[str, Any], source: str = "数据导入", source_url: str = "") -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(400, "JSON 顶层必须是对象")
-    products_found = parse_products(payload)
-    reviews_found = parse_reviews(payload)
+    host = (urlparse(source_url).hostname or "").lower() if source_url else ""
+    if host == "br.shein.com" or host.endswith(".br.shein.com"):
+        platform = "shein"
+    elif host == "shopee.com.br" or host.endswith(".shopee.com.br"):
+        platform = "shopee"
+    else:
+        platform = detect_platform(payload)
+    products_found = parse_products(payload, platform)
+    reviews_found = parse_reviews(payload, platform)
     new_products = updated_products = new_reviews = updated_reviews = 0
     with connect() as db:
         for p in products_found:
@@ -411,7 +428,7 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
                     p["created_at"] = existing["created_at"]
                 if p["title"] == "未命名商品":
                     p["title"] = existing["title"]
-                for nullable in ("shop_name", "shop_location", "image_url"):
+                for nullable in ("shop_name", "shop_location", "product_url", "image_url"):
                     if not p.get(nullable):
                         p[nullable] = existing[nullable]
                 p["historical_sold_delta"] = int(p["historical_sold"] or 0) - int(existing["historical_sold"] or 0)
@@ -477,9 +494,12 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
                    review_time=excluded.review_time,likes=excluded.likes,media_count=excluded.media_count""",
                 r,
             )
-        source_type = "评论"
-        if "get_ratings" not in source_url:
-            source_type = "商品详情" if ("item/get" in source_url or "pdp/get_pc" in source_url) else "商品列表"
+        lowered_source_url = source_url.lower()
+        comment_markers = ("get_ratings", "/comment/", "goods_review", "goods_comment")
+        detail_markers = ("item/get", "pdp/get_pc", "productdetail", "quickview", "detail_static", "detail_realtime")
+        source_type = f"{platform.upper()} 评论" if any(marker in lowered_source_url for marker in comment_markers) else (
+            f"{platform.upper()} 商品详情" if any(marker in lowered_source_url for marker in detail_markers) else f"{platform.upper()} 商品列表"
+        )
         db.execute(
             """INSERT INTO capture_events(
                    source_type,source_url,product_count,review_count,new_product_count,new_review_count
@@ -512,7 +532,18 @@ async def import_json(request: Request):
     return import_payload(payload)
 
 
-CAPTURE_URL_MARKERS = ("search_items", "recommend_v2", "get_ratings", "item/get", "pdp/get_pc")
+CAPTURE_URL_MARKERS = {
+    "shopee": ("search_items", "recommend_v2", "get_ratings", "item/get", "pdp/get_pc"),
+    "shein": (
+        "/api/productlist/info/get", "/api/productinfo/productdetail/get",
+        "/api/productinfo/quickview/get", "/api/comment/abccommentinfo/query",
+        "/api/comment/abccommentimages/query", "/api/comment/abccommentsummary/get",
+        "/product/get_goods_review_detail", "/product/get_goods_comment_offset",
+        "/category/real_category_goods_list", "/product/get_products_by_keywords",
+        "/product/get_goods_detail_static_data", "/product/get_goods_detail_realtime_data",
+        "/__latam_collector_dom__/",
+    ),
+}
 
 
 @app.post("/api/capture")
@@ -525,13 +556,20 @@ async def capture_from_chrome(request: Request):
     payload = body.get("payload")
     parsed_url = urlparse(source_url)
     host = (parsed_url.hostname or "").lower()
-    if parsed_url.scheme != "https" or not (host == "shopee.com.br" or host.endswith(".shopee.com.br")):
-        raise HTTPException(403, "只接受 Shopee 巴西站数据")
-    if not any(marker in source_url for marker in CAPTURE_URL_MARKERS):
+    platform = ""
+    if host == "shopee.com.br" or host.endswith(".shopee.com.br"):
+        platform = "shopee"
+    elif host == "br.shein.com" or host.endswith(".br.shein.com"):
+        platform = "shein"
+    if parsed_url.scheme != "https" or not platform:
+        raise HTTPException(403, "只接受 Shopee 或 SHEIN 巴西站公开数据")
+    lowered_source_url = source_url.lower()
+    if not any(marker in lowered_source_url for marker in CAPTURE_URL_MARKERS[platform]):
         raise HTTPException(400, "不是已支持的数据接口")
     if not isinstance(payload, dict):
         raise HTTPException(400, "响应内容不是 JSON 对象")
-    result = import_payload(payload, "Chrome采集助手", source_url)
+    result = import_payload(payload, f"Chrome采集助手/{platform}", source_url)
+    result["platform"] = platform
     result["source_url"] = source_url
     return result
 
@@ -664,10 +702,10 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.4.0",
+        "version": "0.5.0",
         "database": str(DB_PATH),
-        "connectors": {"shopee": "Chrome采集助手可用", "shein": "待开发", "mercadolivre": "待开发"},
-        "features": ["分类列表一键批量采集", "暂停续采", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
+        "features": ["Shopee/SHEIN 列表批量采集", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
     }
 
 

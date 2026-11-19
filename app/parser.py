@@ -82,9 +82,18 @@ def shopee_money(value: Any) -> float:
 
 
 def timestamp_text(value: Any) -> str | None:
+    if isinstance(value, str) and not value.strip().isdigit():
+        text = value.strip()
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            return text[:40] or None
     try:
+        number = int(value)
+        if abs(number) > 10_000_000_000:
+            number //= 1000
         brazil_time = timezone(timedelta(hours=-3))
-        return datetime.fromtimestamp(int(value), tz=brazil_time).isoformat()
+        return datetime.fromtimestamp(number, tz=brazil_time).isoformat()
     except (TypeError, ValueError, OSError):
         return None
 
@@ -132,7 +141,7 @@ def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
                 yield item
 
 
-def parse_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def parse_shopee_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
     products: list[dict[str, Any]] = []
     for node in iter_product_nodes(payload):
         data = node.get("item_data") or node
@@ -188,7 +197,7 @@ def parse_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return products
 
 
-def parse_reviews(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def parse_shopee_reviews(payload: dict[str, Any]) -> list[dict[str, Any]]:
     data = payload.get("data") or {}
     ratings = data.get("ratings") if isinstance(data, dict) else None
     if not isinstance(ratings, list):
@@ -220,4 +229,274 @@ def parse_reviews(payload: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return reviews
+
+
+SHEIN_PRODUCT_ID_KEYS = ("goods_id", "goodsId", "product_id", "productId")
+SHEIN_PRODUCT_NAME_KEYS = ("goods_name", "goodsName", "product_name", "productName", "title", "name")
+SHEIN_PRICE_KEYS = (
+    "salePrice", "sale_price", "retailPrice", "retail_price", "unit_price",
+    "price", "price_amount", "sale_price_text",
+)
+SHEIN_SOLD_TEXT_KEYS = (
+    "sold_num_text", "soldNumText", "sales_text", "salesText", "sold_text",
+    "sale_count_text", "sales_label", "sold_num", "soldNum", "sales_num", "salesNum",
+)
+SHEIN_REVIEW_ID_KEYS = ("comment_id", "commentId", "review_id", "reviewId")
+
+
+def _walk_dicts(value: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_dicts(child)
+
+
+def _first(node: dict[str, Any], keys: Iterable[str], default: Any = None) -> Any:
+    for key in keys:
+        value = node.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    return default
+
+
+def _localized_number(value: Any, default: float = 0) -> float:
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, dict):
+        value = _first(
+            value,
+            ("amount", "amountWithSymbol", "amount_with_symbol", "value", "price", "sale_price"),
+        )
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).replace("\u00a0", " ")
+    match = re.search(r"-?[0-9][0-9.,]*", text)
+    if not match:
+        return default
+    raw = match.group(0)
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    elif "," in raw:
+        tail = raw.rsplit(",", 1)[1]
+        raw = raw.replace(",", ".") if len(tail) <= 2 else raw.replace(",", "")
+    elif "." in raw:
+        parts = raw.split(".")
+        if len(parts) > 2 or (len(parts) == 2 and len(parts[1]) == 3):
+            raw = raw.replace(".", "")
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _absolute_shein_url(value: Any) -> str | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.startswith("//"):
+        return "https:" + text
+    if text.startswith("https://") or text.startswith("http://"):
+        return text
+    if text.startswith("/"):
+        return "https://br.shein.com" + text
+    return None
+
+
+def _shein_price(node: dict[str, Any]) -> float:
+    return round(_localized_number(_first(node, SHEIN_PRICE_KEYS)), 2)
+
+
+def _shein_created_at(node: dict[str, Any]) -> str | None:
+    value = _first(
+        node,
+        ("goods_create_time", "goodsCreateTime", "create_time", "createTime", "on_sale_time", "new_goods_date"),
+    )
+    return timestamp_text(value)
+
+
+def _shein_image(node: dict[str, Any]) -> str | None:
+    value = _first(
+        node,
+        ("goods_img", "goodsImg", "image_url", "imageUrl", "product_image", "productImage", "thumbnail"),
+    )
+    if isinstance(value, dict):
+        value = _first(value, ("url", "src", "origin_url", "thumbnail"))
+    return _absolute_shein_url(value)
+
+
+def _shein_product_url(node: dict[str, Any], item_id: str) -> str | None:
+    value = _first(node, ("product_url", "productUrl", "goods_url", "goodsUrl", "detail_url", "detailUrl", "url"))
+    url = _absolute_shein_url(value)
+    if url:
+        return url
+    slug = _first(node, ("goods_url_name", "goodsUrlName"))
+    if slug:
+        clean = str(slug).strip().strip("/")
+        if clean and " " not in clean:
+            if "-p-" not in clean:
+                clean = f"{clean}-p-{item_id}.html"
+            return "https://br.shein.com/" + clean
+    return None
+
+
+def _shein_product_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = payload.get("latam_collector")
+    if isinstance(normalized, dict) and normalized.get("platform") == "shein":
+        data = payload.get("data") or {}
+        products = data.get("products") if isinstance(data, dict) else None
+        return [item for item in products or [] if isinstance(item, dict)]
+
+    best: dict[str, tuple[int, dict[str, Any]]] = {}
+    for node in _walk_dicts(payload):
+        item_id = _first(node, SHEIN_PRODUCT_ID_KEYS)
+        if item_id is None:
+            continue
+        has_name = _first(node, SHEIN_PRODUCT_NAME_KEYS) is not None
+        has_price = _first(node, SHEIN_PRICE_KEYS) is not None
+        if not (has_name or has_price):
+            continue
+        score = len(node) + (30 if has_name else 0) + (20 if has_price else 0)
+        key = str(item_id)
+        if key not in best or score > best[key][0]:
+            best[key] = (score, node)
+    return [entry[1] for entry in best.values()]
+
+
+def parse_shein_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    products: list[dict[str, Any]] = []
+    for node in _shein_product_candidates(payload):
+        item_id_value = _first(node, SHEIN_PRODUCT_ID_KEYS)
+        if item_id_value is None:
+            continue
+        item_id = str(item_id_value)
+        title = str(_first(node, SHEIN_PRODUCT_NAME_KEYS, "未命名商品"))
+        shop_id = str(_first(node, ("mall_code", "mallCode", "mall_id", "store_id", "seller_id"), "shein"))
+        sold_value = _first(node, SHEIN_SOLD_TEXT_KEYS)
+        historical_text = str(sold_value) if sold_value not in (None, "") else None
+        historical_raw = sold_value if isinstance(sold_value, (int, float)) and not isinstance(sold_value, bool) else None
+        monthly_value = _first(node, ("monthly_sold", "monthlySold", "monthly_sales", "month_sales", "monthly_sold_text"))
+        monthly_text = str(monthly_value) if monthly_value not in (None, "") else None
+        monthly_raw = monthly_value if isinstance(monthly_value, (int, float)) and not isinstance(monthly_value, bool) else None
+        rating = _localized_number(_first(
+            node,
+            ("comment_rank_average", "commentRankAverage", "goods_score", "rating", "rating_star", "star"),
+        ))
+        review_count = int(_localized_number(_first(
+            node,
+            ("comment_num", "commentNum", "review_count", "reviewCount", "comments_count", "rating_count"),
+        )))
+        category = str(_first(node, ("category_name", "categoryName", "cat_name", "catName"), ""))
+        image = _shein_image(node)
+        product_url = _shein_product_url(node, item_id)
+        products.append(
+            {
+                "platform": "shein",
+                "item_id": item_id,
+                "shop_id": shop_id,
+                "title": title,
+                "category": category or infer_category(title),
+                "price": _shein_price(node),
+                "historical_sold": int(historical_raw) if historical_raw is not None else sold_from_text(historical_text),
+                "monthly_sold": int(monthly_raw) if monthly_raw is not None else sold_from_text(monthly_text),
+                "historical_sold_text": historical_text,
+                "monthly_sold_text": monthly_text,
+                "historical_sold_estimated": int(historical_raw is None and bool(historical_text)),
+                "monthly_sold_estimated": int(monthly_raw is None and bool(monthly_text)),
+                "_historical_available": historical_raw is not None or historical_text is not None,
+                "_monthly_available": monthly_raw is not None or monthly_text is not None,
+                "rating": round(rating, 3),
+                "review_count": review_count,
+                "created_at": _shein_created_at(node),
+                "shop_name": _first(node, ("mall_name", "mallName", "store_name", "storeName", "brand_name", "brandName")),
+                "shop_location": _first(node, ("shop_location", "store_location", "shipping_location")),
+                "product_url": product_url,
+                "image_url": image,
+                "raw_json": json.dumps(node, ensure_ascii=False),
+            }
+        )
+    return products
+
+
+def _media_count(value: Any) -> int:
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, dict):
+        return len(value)
+    if isinstance(value, str):
+        return int(bool(value.strip()))
+    return int(_number(value))
+
+
+def parse_shein_reviews(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    reviews: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for node in _walk_dicts(payload):
+        review_id_value = _first(node, SHEIN_REVIEW_ID_KEYS)
+        if review_id_value is None:
+            continue
+        comment = _first(node, ("comment", "content", "comment_content", "commentContent", "text"))
+        rating_value = _first(node, ("comment_rank", "commentRank", "rating", "rating_star", "star", "rank"))
+        if comment is None and rating_value is None:
+            continue
+        review_id = str(review_id_value)
+        if review_id in seen:
+            continue
+        seen.add(review_id)
+        images = _first(node, ("comment_images", "commentImages", "images", "image_list"), [])
+        videos = _first(node, ("comment_videos", "commentVideos", "videos", "video_list"), [])
+        variant = _first(
+            node,
+            ("goods_style_name", "goodsStyleName", "sku_name", "skuName", "variant", "size", "product_size"),
+            "",
+        )
+        reviews.append(
+            {
+                "platform": "shein",
+                "review_id": review_id,
+                "item_id": str(_first(node, SHEIN_PRODUCT_ID_KEYS, "")),
+                "shop_id": str(_first(node, ("mall_code", "mallCode", "mall_id", "store_id", "seller_id"), "shein")),
+                "rating": int(_localized_number(rating_value)),
+                "comment": str(comment or ""),
+                "variant": str(variant or ""),
+                "review_time": timestamp_text(_first(
+                    node,
+                    ("comment_time", "commentTime", "create_time", "createTime", "add_time", "addTime", "date"),
+                )),
+                "likes": int(_localized_number(_first(node, ("like_num", "likeNum", "like_count", "likes")))),
+                "media_count": _media_count(images) + _media_count(videos),
+            }
+        )
+    return reviews
+
+
+def detect_platform(payload: dict[str, Any]) -> str:
+    metadata = payload.get("latam_collector")
+    if isinstance(metadata, dict) and metadata.get("platform") == "shein":
+        return "shein"
+    for index, node in enumerate(_walk_dicts(payload)):
+        if any(key in node for key in SHEIN_PRODUCT_ID_KEYS + SHEIN_REVIEW_ID_KEYS):
+            return "shein"
+        if index >= 2000:
+            break
+    return "shopee"
+
+
+def parse_products(payload: dict[str, Any], platform: str | None = None) -> list[dict[str, Any]]:
+    resolved = platform or detect_platform(payload)
+    if resolved == "shein":
+        return parse_shein_products(payload)
+    return parse_shopee_products(payload)
+
+
+def parse_reviews(payload: dict[str, Any], platform: str | None = None) -> list[dict[str, Any]]:
+    resolved = platform or detect_platform(payload)
+    if resolved == "shein":
+        return parse_shein_reviews(payload)
+    return parse_shopee_reviews(payload)
 

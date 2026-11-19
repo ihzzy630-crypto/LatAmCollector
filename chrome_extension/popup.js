@@ -2,7 +2,8 @@
 
 let activeTab = null;
 let platformReady = false;
-let shopeeReady = false;
+let pageReady = false;
+let activePlatform = "";
 let bulkSnapshot = {};
 
 function setStatus(id, text, ok) {
@@ -37,7 +38,7 @@ function renderBulk(status) {
   const running = current === "running";
   const resumable = ["stopped", "error"].includes(current) && Number(status?.nextOffset || 0) > 0;
   start.textContent = resumable ? "继续采集" : current === "done" ? "重新采集" : "开始全部采集";
-  start.disabled = running || !platformReady || !shopeeReady;
+  start.disabled = running || !platformReady || !pageReady;
   stop.disabled = !running;
 }
 
@@ -57,12 +58,16 @@ async function refresh() {
   }
 
   [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  shopeeReady = false;
+  pageReady = false;
+  activePlatform = "";
   try {
     const host = new URL(activeTab?.url || "").hostname;
-    shopeeReady = host === "shopee.com.br" || host.endsWith(".shopee.com.br");
+    if (host === "shopee.com.br" || host.endsWith(".shopee.com.br")) activePlatform = "shopee";
+    else if (host === "br.shein.com" || host.endsWith(".br.shein.com")) activePlatform = "shein";
+    pageReady = Boolean(activePlatform);
   } catch (_) {}
-  setStatus("page", shopeeReady ? "已连接" : "请打开 Shopee", shopeeReady);
+  document.getElementById("page-name").textContent = activePlatform === "shein" ? "SHEIN 页面" : activePlatform === "shopee" ? "Shopee 页面" : "采集页面";
+  setStatus("page", pageReady ? "已连接" : "请打开 Shopee / SHEIN", pageReady);
 
   const state = await chrome.storage.local.get({
     captureCount: 0,
@@ -87,12 +92,13 @@ async function refresh() {
     last.textContent = "最近捕获：" + new Date(state.lastCapture).toLocaleString();
     last.className = "muted";
   }
-  renderBulk(state.bulkStatus);
+  const visibleBulk = state.bulkStatus?.platform && activePlatform && state.bulkStatus.platform !== activePlatform ? { status: "idle" } : state.bulkStatus;
+  renderBulk(visibleBulk);
 }
 
 async function sendBulkCommand(action) {
-  if (!activeTab?.id || !shopeeReady) {
-    document.getElementById("bulk-state").textContent = "请先打开 Shopee 分类页或搜索结果页";
+  if (!activeTab?.id || !pageReady) {
+    document.getElementById("bulk-state").textContent = "请先打开 Shopee 或 SHEIN 商品列表页";
     return;
   }
   if (!platformReady) {
@@ -100,7 +106,7 @@ async function sendBulkCommand(action) {
     return;
   }
   const input = document.getElementById("bulk-max");
-  const maxItems = Math.min(6000, Math.max(60, Number(input.value) || 3000));
+  const maxItems = Math.min(6000, Math.max(20, Number(input.value) || 3000));
   input.value = maxItems;
   await chrome.storage.local.set({ bulkMaxItems: maxItems });
   const resume = action === "start" && ["stopped", "error"].includes(bulkSnapshot.status) && Number(bulkSnapshot.nextOffset || 0) > 0;
@@ -118,7 +124,7 @@ async function sendBulkCommand(action) {
     });
     document.getElementById("bulk-state").textContent = action === "stop" ? "正在暂停…" : "命令已发送，正在准备…";
   } catch (_) {
-    document.getElementById("bulk-state").textContent = "请刷新 Shopee 页面后再试一次";
+    document.getElementById("bulk-state").textContent = "请刷新当前商品列表页面后再试一次";
     document.getElementById("bulk-state").className = "muted bad";
   }
 }
@@ -126,7 +132,7 @@ async function sendBulkCommand(action) {
 document.getElementById("bulk-start").addEventListener("click", () => sendBulkCommand("start"));
 document.getElementById("bulk-stop").addEventListener("click", () => sendBulkCommand("stop"));
 document.getElementById("bulk-max").addEventListener("change", async (event) => {
-  const value = Math.min(6000, Math.max(60, Number(event.target.value) || 3000));
+  const value = Math.min(6000, Math.max(20, Number(event.target.value) || 3000));
   event.target.value = value;
   await chrome.storage.local.set({ bulkMaxItems: value });
 });
