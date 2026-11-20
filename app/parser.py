@@ -117,10 +117,52 @@ def infer_category(title: str, categories: Any = None) -> str:
     return "未分类"
 
 
-def image_url(image_id: Any) -> str | None:
-    if not image_id:
+def image_url(value: Any) -> str | None:
+    """Normalize the different image shapes returned by Shopee list/detail APIs."""
+    if not value:
         return None
-    return "https://down-br.img.susercontent.com/file/" + str(image_id)
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            normalized = image_url(item)
+            if normalized:
+                return normalized
+        return None
+    if isinstance(value, dict):
+        for key in (
+            "url", "image_url", "imageUrl", "src", "origin_url", "originUrl",
+            "image", "image_id", "imageId", "hash", "md5",
+        ):
+            if key in value:
+                normalized = image_url(value.get(key))
+                if normalized:
+                    return normalized
+        return None
+    text = str(value).strip()
+    if not text or text.startswith(("data:", "blob:")):
+        return None
+    if text.startswith("//"):
+        return "https:" + text
+    if re.match(r"^https?://", text, re.I):
+        return text
+    if text.startswith("/file/"):
+        return "https://down-br.img.susercontent.com" + text
+    if text.startswith("file/"):
+        text = text[5:]
+    return "https://down-br.img.susercontent.com/file/" + text.lstrip("/")
+
+
+def shopee_product_image(node: dict[str, Any], data: dict[str, Any], asset: dict[str, Any]) -> str | None:
+    candidates = (
+        asset.get("image"), asset.get("images"), asset.get("image_url"),
+        data.get("image"), data.get("images"), data.get("image_url"), data.get("imageUrl"),
+        data.get("image_info"), data.get("imageInfo"), data.get("thumbnail"),
+        node.get("image"), node.get("images"), node.get("image_url"), node.get("imageUrl"),
+    )
+    for candidate in candidates:
+        normalized = image_url(candidate)
+        if normalized:
+            return normalized
+    return None
 
 
 def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
@@ -131,6 +173,10 @@ def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
                 yield unit["item"]
     if isinstance(data, dict) and isinstance(data.get("item"), dict):
         yield data["item"]
+    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        for item in data["items"]:
+            if isinstance(item, dict):
+                yield item
     if isinstance(data, dict) and (data.get("itemid") is not None or data.get("item_id") is not None):
         yield data
     if isinstance(payload.get("item"), dict):
@@ -143,13 +189,18 @@ def iter_product_nodes(payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
 
 def parse_shopee_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
     products: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
     for node in iter_product_nodes(payload):
-        data = node.get("item_data") or node
+        data = node.get("item_data") or node.get("item_basic") or node
         asset = node.get("item_card_displayed_asset") or {}
         item_id = data.get("itemid") or data.get("item_id") or node.get("itemid")
         shop_id = data.get("shopid") or data.get("shop_id") or node.get("shopid")
         if item_id is None or shop_id is None:
             continue
+        identity = (str(shop_id), str(item_id))
+        if identity in seen:
+            continue
+        seen.add(identity)
         price_info = data.get("item_card_display_price") or {}
         sold_info = data.get("item_card_display_sold_count") or {}
         rating_info = data.get("item_rating") or {}
@@ -190,7 +241,7 @@ def parse_shopee_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "shop_name": shop_info.get("shop_name") or data.get("shop_name"),
                 "shop_location": shop_info.get("shop_location") or asset.get("shop_location"),
                 "product_url": f"https://shopee.com.br/product/{shop_id}/{item_id}",
-                "image_url": image_url(asset.get("image") or data.get("image")),
+                "image_url": shopee_product_image(node, data, asset),
                 "raw_json": json.dumps(node, ensure_ascii=False),
             }
         )

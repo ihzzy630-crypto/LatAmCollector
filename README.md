@@ -1,6 +1,6 @@
 # LatAm Collector
 
-面向巴西跨境电商选品的本地数据管理与采集平台。v0.5.2 支持 Shopee 与 SHEIN 巴西站商品/评论采集、SHEIN 延迟销量更新、安全节奏滚动与严格分页、异常页暂停续采、销量口径控制、趋势追踪、选品参考分和消费者声音分析。
+面向巴西跨境电商选品的本地数据管理与采集平台。v0.5.3 支持 Shopee 与 SHEIN 巴西站商品/评论采集、Shopee 商品缩略图与历史补图、SHEIN 延迟销量更新、安全节奏滚动与严格分页、异常页暂停续采、销量口径控制、趋势追踪、选品参考分和消费者声音分析。
 
 Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的公开商品与评论响应，并发送到本机平台，不读取密码或请求头。
 
@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 ## 当前能力
 
 - Shopee `search_items` 和 `recommend_v2` 商品数据解析
+- Shopee 列表/详情多种图片字段兼容、商品缩略图、缺图筛选、历史数据自动补图和导出图片链接
 - Shopee `get_ratings` 评论数据解析
 - SHEIN 商品列表卡片与公开商品接口解析
 - SHEIN 公开评论接口解析

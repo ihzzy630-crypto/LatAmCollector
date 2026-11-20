@@ -39,12 +39,37 @@ def ensure_extension_files() -> None:
         shutil.copytree(source, target, dirs_exist_ok=True)
 
 
+def backfill_shopee_images() -> int:
+    """Recover thumbnails from stored raw JSON without deleting or reimporting user data."""
+    updated = 0
+    with connect() as db:
+        rows = db.execute(
+            """SELECT id, raw_json FROM products
+               WHERE platform='shopee' AND (image_url IS NULL OR image_url='')
+                 AND raw_json IS NOT NULL AND raw_json<>''"""
+        ).fetchall()
+        for row in rows:
+            try:
+                raw = json.loads(row["raw_json"])
+                parsed = parse_products({"items": [raw]}, "shopee")
+                thumbnail = parsed[0].get("image_url") if parsed else None
+            except (json.JSONDecodeError, TypeError, ValueError):
+                thumbnail = None
+            if thumbnail:
+                db.execute("UPDATE products SET image_url=? WHERE id=?", (thumbnail, row["id"]))
+                updated += 1
+    return updated
+
+
 app = FastAPI(title="LatAm Collector", docs_url=None, redoc_url=None)
 
 
 @app.on_event("startup")
 def startup() -> None:
     initialize()
+    recovered = backfill_shopee_images()
+    if recovered:
+        add_log("Shopee 图片", f"已从历史原始数据补回 {recovered} 张商品图片")
     ensure_extension_files()
 
 
@@ -130,6 +155,11 @@ def product_query(params: dict[str, Any]) -> tuple[str, list[Any]]:
         where.append(f"{quality_column} = 1")
     if str(params.get("favorite") or "") == "1":
         where.append("is_favorite = 1")
+    image_state = str(params.get("image_state") or "")
+    if image_state == "with":
+        where.append("image_url IS NOT NULL AND image_url <> ''")
+    elif image_state == "missing":
+        where.append("(image_url IS NULL OR image_url = '')")
     if params.get("location"):
         where.append("shop_location LIKE ?")
         values.append("%" + str(params["location"]) + "%")
@@ -201,6 +231,7 @@ def products(
     min_reviews: str = "",
     sales_quality: str = "",
     favorite: str = "",
+    image_state: str = "",
     location: str = "",
     q: str = "",
     sort_by: str = "monthly_sold",
@@ -663,7 +694,7 @@ def export_rows(kind: str) -> tuple[list[str], list[dict[str, Any]]]:
             "historical_sold", "historical_sold_text", "historical_sold_estimated", "historical_sold_delta",
             "monthly_sold", "monthly_sold_text", "monthly_sold_estimated", "monthly_sold_delta",
             "rating", "review_count", "created_at", "shop_name", "shop_location", "capture_count",
-            "is_favorite", "note", "last_changed_at", "imported_at", "product_url",
+            "is_favorite", "note", "last_changed_at", "imported_at", "product_url", "image_url",
         ]
         query = "SELECT " + ",".join(columns) + " FROM products ORDER BY historical_sold DESC"
     with connect() as db:
@@ -708,10 +739,10 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.5.2",
+        "version": "0.5.3",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
-        "features": ["Shopee/SHEIN 列表批量采集", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "features": ["Shopee/SHEIN 列表批量采集", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
     }
 
 

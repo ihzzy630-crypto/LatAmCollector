@@ -54,6 +54,28 @@ def test_product_detail_payload():
     assert item["historical_sold_estimated"] == 0
 
 
+def test_shopee_image_shapes_and_item_basic():
+    payload = {
+        "data": {
+            "items": [{
+                "item_basic": {
+                    "itemid": 9988,
+                    "shopid": 7766,
+                    "name": "Produto com imagem",
+                    "price": 3290000,
+                    "images": [{"md5": "br-11134207-example"}],
+                }
+            }]
+        }
+    }
+    item = parse_products(payload, "shopee")[0]
+    assert item["image_url"] == "https://down-br.img.susercontent.com/file/br-11134207-example"
+
+    payload["data"]["items"][0]["item_basic"]["images"] = ["https://example.com/product.jpg"]
+    item = parse_products(payload, "shopee")[0]
+    assert item["image_url"] == "https://example.com/product.jpg"
+
+
 def test_shein_normalized_page_products():
     payload = {
         "latam_collector": {"platform": "shein", "kind": "products"},
