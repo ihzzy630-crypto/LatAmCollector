@@ -28,6 +28,9 @@
   const SHEIN_PAGE_PAUSE_MIN_MS = 6500;
   const SHEIN_PAGE_PAUSE_MAX_MS = 10000;
   const SHEIN_JOB_KEY = "LATAM_COLLECTOR_SHEIN_BULK_V1";
+  const SHOPEE_STOP_KEY = "LATAM_COLLECTOR_SHOPEE_STOP_V1";
+  let shopeeStoppedHere = false;
+  let shopeeCheckpoint = null;
   let lastSearchUrl = "";
   let lastSearchTotal = 0;
   const passiveSheinFingerprints = new Map();
@@ -62,6 +65,42 @@
 
   function isShopeeSearchUrl(url) {
     return platformFromUrl(url) === "shopee" && String(url).toLowerCase().includes("search_items");
+  }
+
+  function shopeePageIssue(text, path = "") {
+    const normalized = String(text || "").slice(0, 12000).replace(/\s+/g, " ").toLowerCase();
+    if (/\/(?:captcha|verify|verification|challenge)(?:\/|$)/i.test(path) ||
+        /verifi(?:que|car) que você é humano|verify you are human/.test(normalized)) {
+      return "出现人机验证";
+    }
+    if (normalized.includes("página indisponível") && normalized.includes("algo deu errado")) {
+      return "页面不可用（Página indisponível）";
+    }
+    return "";
+  }
+
+  function currentShopeeIssue() {
+    return shopeePageIssue(document.body?.innerText, location.pathname);
+  }
+
+  function shopeeResponseIssue(requestUrl, finalUrl, status) {
+    if (!isSupportedUrl(requestUrl) || platformFromUrl(requestUrl) !== "shopee") return "";
+    if (status === 403 || status === 429) return `返回 HTTP ${status}`;
+    return finalUrl && platformFromUrl(finalUrl) === "shopee"
+      ? shopeePageIssue("", new URL(finalUrl, location.href).pathname) : "";
+  }
+
+  function stopShopee(reason) {
+    if (shopeeStoppedHere) return;
+    shopeeStoppedHere = true;
+    bulkRunning = false;
+    bulkRunId += 1;
+    emitBulkStatus("error", {
+      ...shopeeCheckpoint, platform: "shopee",
+      message: `Shopee ${reason}，已自动停采。页面恢复后，请刷新并手动继续。`
+    });
+    shopeeCheckpoint = bulkProgress;
+    try { sessionStorage.setItem(SHOPEE_STOP_KEY, JSON.stringify(shopeeCheckpoint)); } catch (_) {}
   }
 
   function sheinPageIssue() {
@@ -157,7 +196,7 @@
     if (previousKey && previousKey !== nextKey) lastSearchTotal = 0;
     lastSearchUrl = String(url);
     lastSearchTotal = totalCount(payload) || lastSearchTotal;
-    if (!bulkRunning) {
+    if (!bulkRunning && !shopeeCheckpoint) {
       emitBulkStatus("ready", {
         platform: "shopee", total: lastSearchTotal, sourceUrl: lastSearchUrl,
         sourceKey: searchKey(lastSearchUrl), page: 0, captured: 0, nextOffset: 0,
@@ -169,6 +208,7 @@
   function publish(url, payload) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
     rememberSearch(url, payload);
+    if (shopeeCheckpoint && platformFromUrl(url) === "shopee") return;
     document.dispatchEvent(new CustomEvent(EVENT_NAME, {
       detail: JSON.stringify({ source_url: String(url), captured_at: new Date().toISOString(), payload })
     }));
@@ -298,6 +338,16 @@
   }
 
   async function runShopeeBulk(command) {
+    const pageIssue = currentShopeeIssue();
+    if (pageIssue) stopShopee(pageIssue);
+    if (shopeeStoppedHere) return;
+    if (shopeeCheckpoint && !lastSearchUrl) return;
+    if (shopeeCheckpoint) {
+      const { nextOffset, captured, sourceKey } = shopeeCheckpoint;
+      command = { ...command, resume: true, startOffset: nextOffset, captured, sourceKey };
+      shopeeCheckpoint = null;
+      try { sessionStorage.removeItem(SHOPEE_STOP_KEY); } catch (_) {}
+    }
     if (!lastSearchUrl) {
       emitBulkStatus("error", { platform: "shopee", message: "请先刷新一次 Shopee 分类页或搜索结果页" });
       return;
@@ -319,6 +369,8 @@
     });
     try {
       while (bulkRunning && currentRunId === bulkRunId && captured < maxItems) {
+        const pageIssue = currentShopeeIssue();
+        if (pageIssue) return stopShopee(pageIssue);
         const requestUrl = new URL(baseUrl.href);
         requestUrl.searchParams.set("newest", String(offset));
         requestUrl.searchParams.set("limit", String(limit));
@@ -327,10 +379,15 @@
           method: "GET", credentials: "include",
           headers: { "accept": "application/json", "x-api-source": "pc", "x-shopee-language": "pt-BR" }
         });
-        if (response.status === 403 || response.status === 429) throw new Error(`Shopee 返回 ${response.status}，已安全暂停，请稍后继续`);
+        if (currentRunId !== bulkRunId) return;
+        const responseIssue = shopeeResponseIssue(requestUrl.href, response.url, response.status);
+        if (responseIssue) return stopShopee(responseIssue);
         if (!response.ok) throw new Error(`Shopee 返回 HTTP ${response.status}`);
         const text = await response.text();
         if (!text || text.length > MAX_TEXT_LENGTH) throw new Error("返回内容为空或过大");
+        if (currentRunId !== bulkRunId) return;
+        const bodyIssue = /^(?:\s*<)/.test(text) ? shopeePageIssue(text) : "";
+        if (bodyIssue) return stopShopee(bodyIssue);
         const payload = JSON.parse(text);
         const count = productCount(payload);
         const total = totalCount(payload) || lastSearchTotal;
@@ -359,6 +416,7 @@
         await delay(SHOPEE_INTERVAL_MS);
       }
     } catch (error) {
+      if (currentRunId !== bulkRunId) return;
       bulkRunning = false;
       emitBulkStatus("error", { page, captured, nextOffset: offset, message: error?.message || String(error) });
     }
@@ -551,6 +609,7 @@
     try {
       const command = JSON.parse(event.detail || "{}");
       if (command.action === "stop") {
+        if (shopeeCheckpoint) return;
         bulkRunning = false;
         bulkRunId += 1;
         if (platformFromUrl(location.href) === "shein") {
@@ -567,11 +626,15 @@
     }
   });
 
-  async function inspectFetchResponse(response) {
+  async function inspectFetchResponse(response, requestUrl) {
+    const issue = shopeeResponseIssue(requestUrl, response.url, response.status);
+    if (issue) return stopShopee(issue);
     if (!isSupportedUrl(response.url)) return;
     try {
       const text = await response.clone().text();
       if (!text || text.length > MAX_TEXT_LENGTH) return;
+      const bodyIssue = platformFromUrl(response.url) === "shopee" && /^\s*</.test(text) && shopeePageIssue(text);
+      if (bodyIssue) return stopShopee(bodyIssue);
       publish(response.url, JSON.parse(text));
     } catch (_) {
       // The page must never be interrupted when a response is unreadable.
@@ -581,7 +644,7 @@
   const originalFetch = window.fetch;
   window.fetch = function (...args) {
     const pending = originalFetch.apply(this, args);
-    pending.then(inspectFetchResponse).catch(() => {});
+    pending.then((response) => inspectFetchResponse(response, args[0]?.url || args[0])).catch(() => {});
     return pending;
   };
 
@@ -596,10 +659,14 @@
       this.addEventListener("load", () => {
         try {
           const finalUrl = this.responseURL || this.__latamCollectorUrl;
+          const issue = shopeeResponseIssue(this.__latamCollectorUrl, finalUrl, this.status);
+          if (issue) return stopShopee(issue);
           let payload;
           if (this.responseType === "json") payload = this.response;
           else if (!this.responseType || this.responseType === "text") {
             if (!this.responseText || this.responseText.length > MAX_TEXT_LENGTH) return;
+            const bodyIssue = platformFromUrl(finalUrl) === "shopee" && /^\s*</.test(this.responseText) && shopeePageIssue(this.responseText);
+            if (bodyIssue) return stopShopee(bodyIssue);
             payload = JSON.parse(this.responseText);
           }
           publish(finalUrl, payload);
@@ -637,6 +704,28 @@
     }
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeSheinPage, { once: true });
-  else initializeSheinPage();
+  function initializePage() {
+    if (platformFromUrl(location.href) !== "shopee") return initializeSheinPage();
+    if (shopeeCheckpoint) emitBulkStatus("error", shopeeCheckpoint);
+    function checkPage() {
+      const issue = currentShopeeIssue();
+      if (issue) stopShopee(issue);
+    }
+    checkPage();
+    let checkTimer;
+    const observer = new MutationObserver(() => {
+      if (shopeeStoppedHere || checkTimer) return;
+      checkTimer = setTimeout(() => {
+        checkTimer = null;
+        checkPage();
+      }, 250);
+    });
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  if (platformFromUrl(location.href) === "shopee") {
+    try { shopeeCheckpoint = JSON.parse(sessionStorage.getItem(SHOPEE_STOP_KEY) || "null"); } catch (_) {}
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializePage, { once: true });
+  else initializePage();
 })();
