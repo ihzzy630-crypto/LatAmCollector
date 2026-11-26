@@ -53,8 +53,8 @@ try {
     $service = Start-Process -FilePath $desktopShortcut -PassThru
     $system = Wait-For-Service
     if ($system.database -ne $database) { throw "Unexpected database path $($system.database), expected $database." }
-    $home = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
-    if ($home.StatusCode -ne 200 -or $home.Content -notlike '*LatAm*') { throw 'The radar page is missing.' }
+    $dashboardResponse = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
+    if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*LatAm*') { throw 'The radar page is missing.' }
     $other = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
     if (-not $other.WaitForExit(20000) -or $other.ExitCode -ne 0) {
         if (-not $other.HasExited) { Stop-Process -Id $other.Id }
