@@ -7,7 +7,7 @@
   </style>
 </head>
 <body>
-  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.5.3</small></h1>
+  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.5.4</small></h1>
   <div class="box">
     <div class="row"><span>本地平台</span><b id="platform">检查中…</b></div>
     <div class="row"><span id="page-name">采集页面</span><b id="page">检查中…</b></div>
@@ -17,8 +17,8 @@
     <div class="row"><span>本次最多采集</span><label><input id="bulk-max" type="number" value="3000" min="20" max="6000" step="20"> 件</label></div>
     <div class="progress"><i id="bulk-bar"></i></div>
     <div class="muted" id="bulk-state">先打开并刷新分类页或搜索结果页</div>
-    <div class="actions"><button id="bulk-start">开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
-    <div class="muted" id="bulk-help">采用安全节奏滚动/翻页并去重；延迟出现的销量会再次更新。遇到验证、空结果或拒绝访问会立即暂停并保留进度。</div>
+    <div class="actions"><button id="bulk-start" disabled>开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
+    <div class="muted" id="bulk-help">Shopee 出现页面错误或验证时会暂停。手动打开正常商品列表后，可再开始采集。</div>
   </div>
   <div class="box">
     <div class="row"><span>捕获响应</span><b id="captures">0</b></div>
@@ -27,6 +27,7 @@
     <div class="muted" id="last">尚未捕获数据</div>
   </div>
   <div class="muted">保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站的分类页、搜索页、商品页或评论区。助手只整理页面公开响应，不读取密码。</div>
+  <button id="shopee-home" class="secondary">打开 Shopee 巴西首页</button>
   <button id="dashboard">打开选品雷达</button>
   <script src="popup.js"></script>
 </body>

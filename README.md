@@ -62,6 +62,10 @@ powershell -ExecutionPolicy Bypass -File $setup
 4. 选择 `D:\gpt专用文件\LatAmCollector\chrome_extension`。
 5. 保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站页面。
 
+Chrome 助手 v0.5.4 增加了 Shopee 页面状态提示和“打开 Shopee 巴西首页”按钮。遇到页面不可用、人工验证、HTTP 403 或 429 时，助手暂停采集。等能手动打开正常的商品列表后，再从插件里开始或继续。
+
+已经安装本地平台时，可以单独更新 Chrome 助手。下载 GitHub 源码 ZIP 并解压，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 里点“重新加载”，然后重开 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
+
 ## 后续接口
 
 采集连接器采用独立适配器：Shopee 与 SHEIN 共用 Chrome 采集助手，Mercado Livre 后续优先接官方 API/公开数据连接器。网站接口改变时只替换连接器，不修改商品库与任务中心。
