@@ -9,10 +9,12 @@ $database = Join-Path $installDir 'data\latam_collector.db'
 $url = 'http://127.0.0.1:8765'
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'LatAmCollector.lnk'
 $startupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'LatAmCollector-AutoStart.lnk'
+$setupLog = Join-Path $env:RUNNER_TEMP 'latam-setup-test.log'
 $service = $null
+$verified = $false
 
 function Install-Setup {
-    $setupArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=autostart', "/DIR=`"$installDir`"")
+    $setupArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=autostart', "/DIR=`"$installDir`"", "/LOG=`"$setupLog`"")
     $process = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "Setup exited with code $($process.ExitCode)." }
 }
@@ -20,7 +22,10 @@ function Install-Setup {
 function Wait-For-Service {
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     do {
-        try { return Invoke-RestMethod -Uri "$url/api/system" -TimeoutSec 2 }
+        try {
+            $response = Invoke-WebRequest -Uri "$url/api/system" -UseBasicParsing -TimeoutSec 2
+            return ([Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()) | ConvertFrom-Json)
+        }
         catch { Start-Sleep -Milliseconds 350 }
     } while ([DateTime]::UtcNow -lt $deadline)
     throw 'The installed app did not respond on port 8765.'
@@ -41,16 +46,13 @@ try {
     if ($manifest.version -ne $expectedManifest.version -or -not (Test-Path "$installDir\chrome_extension\queue.html")) {
         throw 'The installer did not place the Chrome helper files.'
     }
-    $shell = New-Object -ComObject WScript.Shell
     foreach ($shortcut in @($desktopShortcut, $startupShortcut)) {
-        if (-not (Test-Path -LiteralPath $shortcut) -or $shell.CreateShortcut($shortcut).TargetPath -ne $exe) {
-            throw "Invalid shortcut at $shortcut"
-        }
+        if (-not (Test-Path -LiteralPath $shortcut)) { throw "Missing shortcut at $shortcut" }
     }
 
-    $service = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
+    $service = Start-Process -FilePath $desktopShortcut -PassThru
     $system = Wait-For-Service
-    if ($system.database -ne $database) { throw 'The service is using a different database.' }
+    if ($system.database -ne $database) { throw "Unexpected database path $($system.database), expected $database." }
     $home = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
     if ($home.StatusCode -ne 200 -or $home.Content -notlike '*LatAm*') { throw 'The radar page is missing.' }
     $other = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
@@ -69,7 +71,7 @@ try {
     $service = $null
 
     Install-Setup
-    $service = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
+    $service = Start-Process -FilePath $startupShortcut -PassThru
     Wait-For-Service | Out-Null
     $stats = Invoke-RestMethod -Uri "$url/api/stats"
     if ($stats.products -ne 1) { throw 'Reinstalling did not preserve the product library.' }
@@ -81,9 +83,11 @@ try {
     if ($removed.ExitCode -ne 0 -or (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath $database)) {
         throw 'The uninstaller did not remove the app and preserve the product library.'
     }
+    $verified = $true
     Write-Host 'Verified Windows installation, shortcuts, Chrome files, startup, capture, reinstall and uninstall.'
 }
 finally {
     Stop-TestService $service
+    if (-not $verified -and (Test-Path -LiteralPath $setupLog)) { Get-Content -LiteralPath $setupLog -Tail 55 }
     if (Test-Path "$installDir\data\startup.log") { Get-Content "$installDir\data\startup.log" -Tail 30 }
 }
