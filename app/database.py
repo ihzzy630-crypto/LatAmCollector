@@ -5,6 +5,8 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
+from .categories import classify_stored_product
+
 
 def app_directory() -> Path:
     if getattr(sys, "frozen", False):
@@ -41,6 +43,7 @@ def initialize() -> None:
                 shop_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 category TEXT NOT NULL DEFAULT '未分类',
+                category_origin TEXT NOT NULL DEFAULT '',
                 price REAL NOT NULL DEFAULT 0,
                 historical_sold INTEGER NOT NULL DEFAULT 0,
                 monthly_sold INTEGER NOT NULL DEFAULT 0,
@@ -126,6 +129,7 @@ def initialize() -> None:
         # Existing installations are upgraded in place so the user's local data is kept.
         existing = {row[1] for row in db.execute("PRAGMA table_info(products)").fetchall()}
         migrations = {
+            "category_origin": "TEXT NOT NULL DEFAULT ''",
             "historical_sold_estimated": "INTEGER NOT NULL DEFAULT 1",
             "monthly_sold_estimated": "INTEGER NOT NULL DEFAULT 1",
             "historical_sold_delta": "INTEGER NOT NULL DEFAULT 0",
@@ -139,6 +143,32 @@ def initialize() -> None:
         for column, definition in migrations.items():
             if column not in existing:
                 db.execute(f"ALTER TABLE products ADD COLUMN {column} {definition}")
+
+
+def normalize_existing_categories() -> None:
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        last_id = 0
+        updated = 0
+        while True:
+            rows = db.execute(
+                """SELECT id, platform, title, category, raw_json FROM products
+                   WHERE category_origin='' AND id>? ORDER BY id LIMIT 100""",
+                (last_id,),
+            ).fetchall()
+            if not rows:
+                break
+            db.executemany(
+                "UPDATE products SET category=?, category_origin=? WHERE id=?",
+                [(*classify_stored_product(row, reuse_old_category=True), row["id"]) for row in rows],
+            )
+            updated += len(rows)
+            last_id = rows[-1]["id"]
+        if updated:
+            db.execute(
+                "INSERT INTO logs(source, message) VALUES (?, ?)",
+                ("产品分类", f"已更新 {updated} 条历史商品的品类"),
+            )
 
 
 def add_log(source: str, message: str, level: str = "INFO") -> None:

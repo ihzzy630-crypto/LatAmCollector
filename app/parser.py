@@ -5,32 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
-
-HARDWARE_WORDS = (
-    "ferrament", "furadeira", "parafusadeira", "chave", "broca", "soquete",
-    "alicate", "martelo", "serra", "compressor", "solda", "bateria 21v",
-)
-FASHION_WORDS = (
-    "vestido", "blusa", "camisa", "calça", "saia", "short feminino",
-    "conjunto feminino", "moda feminina", "cropped", "legging",
-)
-HOME_WORDS = (
-    "cozinha", "casa", "limpeza", "organizador", "marmita", "frigideira",
-    "decoração", "banheiro", "cama", "toalha", "escova", "pote",
-)
-ELECTRONICS_WORDS = (
-    "fone", "carregador", "smartwatch", "cabo usb", "caixa de som",
-    "eletrônico", "camera", "câmera", "lâmpada led", "lampada led",
-)
-BEAUTY_WORDS = (
-    "maquiagem", "beleza", "skincare", "cabelo", "unha", "perfume",
-    "hidratante", "escova secadora",
-)
-SPORT_WORDS = (
-    "academia", "fitness", "esporte", "bicicleta", "camping", "corrida",
-    "halter", "yoga",
-)
-KIDS_WORDS = ("bebê", "bebe", "infantil", "brinquedo", "criança", "crianca")
+from .categories import classify_product
 
 
 def _number(value: Any, default: float = 0) -> float:
@@ -96,25 +71,6 @@ def timestamp_text(value: Any) -> str | None:
         return datetime.fromtimestamp(number, tz=brazil_time).isoformat()
     except (TypeError, ValueError, OSError):
         return None
-
-
-def infer_category(title: str, categories: Any = None) -> str:
-    lowered = title.casefold()
-    if any(word in lowered for word in HARDWARE_WORDS):
-        return "五金工具"
-    if any(word in lowered for word in FASHION_WORDS):
-        return "女装服装"
-    if any(word in lowered for word in HOME_WORDS):
-        return "家居百货"
-    if any(word in lowered for word in ELECTRONICS_WORDS):
-        return "数码家电"
-    if any(word in lowered for word in BEAUTY_WORDS):
-        return "美妆个护"
-    if any(word in lowered for word in SPORT_WORDS):
-        return "运动户外"
-    if any(word in lowered for word in KIDS_WORDS):
-        return "母婴玩具"
-    return "未分类"
 
 
 def image_url(value: Any) -> str | None:
@@ -206,6 +162,7 @@ def parse_shopee_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
         rating_info = data.get("item_rating") or {}
         shop_info = data.get("shop_data") or {}
         title = str(asset.get("name") or data.get("name") or node.get("display_name") or "未命名商品")
+        category, category_origin = classify_product("shopee", title, node)
         raw_price = price_info.get("price") or (asset.get("display_price") or {}).get("price") or data.get("price") or data.get("price_min")
         historical_text = (sold_info.get("historical_sold_count_text") or
                            sold_info.get("display_sold_count_text") or data.get("historical_sold_text"))
@@ -225,7 +182,8 @@ def parse_shopee_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "item_id": str(item_id),
                 "shop_id": str(shop_id),
                 "title": title,
-                "category": infer_category(title, data.get("global_cat")),
+                "category": category,
+                "category_origin": category_origin,
                 "price": shopee_money(raw_price),
                 "historical_sold": historical,
                 "monthly_sold": monthly,
@@ -505,7 +463,7 @@ def parse_shein_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
             node,
             ("comment_num", "commentNum", "review_count", "reviewCount", "comments_count", "rating_count"),
         )))
-        category = str(_first(node, ("category_name", "categoryName", "cat_name", "catName"), ""))
+        category, category_origin = classify_product("shein", title, node)
         image = _shein_image(node)
         product_url = _shein_product_url(node, item_id)
         products.append(
@@ -514,7 +472,8 @@ def parse_shein_products(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "item_id": item_id,
                 "shop_id": shop_id,
                 "title": title,
-                "category": category or infer_category(title),
+                "category": category,
+                "category_origin": category_origin,
                 "price": _shein_price(node),
                 "historical_sold": int(historical_raw) if historical_raw is not None else sold_from_text(historical_text),
                 "monthly_sold": int(monthly_raw) if monthly_raw is not None else sold_from_text(monthly_text),

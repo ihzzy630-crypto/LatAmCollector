@@ -6,6 +6,7 @@ import json
 import math
 import os
 import shutil
+import sqlite3
 import sys
 import threading
 import webbrowser
@@ -19,7 +20,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from openpyxl import Workbook
 
-from .database import DB_PATH, add_log, connect, initialize
+from .categories import CATEGORY_GROUPS, CATEGORY_ORIGIN_RANK, CATEGORIES, classify_stored_product
+from .database import DB_PATH, add_log, connect, initialize, normalize_existing_categories
 from .parser import detect_platform, parse_products, parse_reviews
 
 
@@ -67,6 +69,7 @@ app = FastAPI(title="LatAm Collector", docs_url=None, redoc_url=None)
 @app.on_event("startup")
 def startup() -> None:
     initialize()
+    normalize_existing_categories()
     recovered = backfill_shopee_images()
     if recovered:
         add_log("Shopee 图片", f"已从历史原始数据补回 {recovered} 张商品图片")
@@ -170,6 +173,11 @@ def product_query(params: dict[str, Any]) -> tuple[str, list[Any]]:
     return " AND ".join(where), values
 
 
+def category_counts(db: sqlite3.Connection, where: str, values: list[Any]) -> dict[str, int]:
+    rows = db.execute(f"SELECT category, COUNT(*) FROM products WHERE {where} GROUP BY category", values)
+    return {category: count for category, count in rows if category in CATEGORIES}
+
+
 def product_age_days(created_at: Any) -> int | None:
     if not created_at:
         return None
@@ -242,6 +250,7 @@ def products(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
     where, values = product_query(locals())
+    facet_where, facet_values = product_query({**locals(), "category": ""})
     sort_columns = {
         "historical_sold": "historical_sold",
         "monthly_sold": "monthly_sold",
@@ -254,7 +263,10 @@ def products(
     }
     direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
     with connect() as db:
+        db.execute("BEGIN")
+        counts = category_counts(db, facet_where, facet_values)
         total = db.execute("SELECT COUNT(*) FROM products WHERE " + where, values).fetchone()[0]
+        page = min(page, max(1, (total + page_size - 1) // page_size))
         if sort_by == "opportunity":
             all_rows = [enrich_product(dict(row)) for row in db.execute("SELECT * FROM products WHERE " + where, values).fetchall()]
             all_rows.sort(key=lambda row: (row["opportunity_score"], row["monthly_sold"], row["id"]), reverse=direction == "DESC")
@@ -266,21 +278,35 @@ def products(
                 values + [page_size, (page - 1) * page_size],
             ).fetchall()
             items = [enrich_product(dict(row)) for row in rows]
-    return {"total": total, "page": page, "page_size": page_size, "items": items}
+    return {
+        "total": total, "page": page, "page_size": page_size, "items": items,
+        "category_groups": CATEGORY_GROUPS, "category_counts": counts,
+    }
 
 
 @app.get("/api/product-options")
-def product_options():
+def product_options(platform: str = ""):
+    where, values = product_query({"platform": platform})
     with connect() as db:
-        categories = [row[0] for row in db.execute("SELECT DISTINCT category FROM products WHERE category<>'' ORDER BY category").fetchall()]
-        locations = [row[0] for row in db.execute("SELECT DISTINCT shop_location FROM products WHERE shop_location IS NOT NULL AND shop_location<>'' ORDER BY shop_location LIMIT 100").fetchall()]
+        counts = category_counts(db, where, values)
+        locations = [row[0] for row in db.execute(
+            f"""SELECT DISTINCT shop_location FROM products
+                WHERE {where} AND shop_location IS NOT NULL AND shop_location<>''
+                ORDER BY shop_location LIMIT 100""", values,
+        )]
         platforms = [row[0] for row in db.execute("SELECT DISTINCT platform FROM products ORDER BY platform").fetchall()]
-    return {"categories": categories, "locations": locations, "platforms": platforms}
+    return {
+        "categories": [category for category in CATEGORIES if category in counts],
+        "category_groups": CATEGORY_GROUPS, "category_counts": counts,
+        "locations": locations, "platforms": platforms,
+    }
 
 
 @app.patch("/api/products/{product_id}")
 async def update_product(product_id: int, request: Request):
     body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "商品更新必须是 JSON 对象")
     updates: list[str] = []
     values: list[Any] = []
     if "is_favorite" in body:
@@ -289,10 +315,26 @@ async def update_product(product_id: int, request: Request):
     if "note" in body:
         updates.append("note=?")
         values.append(str(body["note"])[:2000])
-    if not updates:
+    if not updates and "category" not in body:
         raise HTTPException(400, "没有可更新的内容")
-    values.append(product_id)
     with connect() as db:
+        if "category" in body:
+            chosen_category = body["category"]
+            if chosen_category is None:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute(
+                    "SELECT platform, title, raw_json FROM products WHERE id=?", (product_id,),
+                ).fetchone()
+                if row is None:
+                    raise HTTPException(404, "商品不存在")
+                chosen_category, origin = classify_stored_product(row)
+            elif isinstance(chosen_category, str) and chosen_category in CATEGORIES:
+                origin = "manual"
+            else:
+                raise HTTPException(400, "请选择品类列表中的选项")
+            updates.extend(("category=?", "category_origin=?"))
+            values.extend((chosen_category, origin))
+        values.append(product_id)
         cur = db.execute("UPDATE products SET " + ",".join(updates) + " WHERE id=?", values)
         if cur.rowcount == 0:
             raise HTTPException(404, "商品不存在")
@@ -438,6 +480,7 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
     reviews_found = parse_reviews(payload, platform)
     new_products = updated_products = new_reviews = updated_reviews = 0
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         for p in products_found:
             existing = db.execute(
                 "SELECT * FROM products WHERE platform=? AND shop_id=? AND item_id=?",
@@ -445,6 +488,9 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
             ).fetchone()
             if existing:
                 existing = dict(existing)
+                if CATEGORY_ORIGIN_RANK.get(existing["category_origin"], 0) > CATEGORY_ORIGIN_RANK[p["category_origin"]]:
+                    p["category"] = existing["category"]
+                    p["category_origin"] = existing["category_origin"]
                 if not p.pop("_historical_available", False):
                     p["historical_sold"] = existing["historical_sold"]
                     p["historical_sold_text"] = existing["historical_sold_text"]
@@ -482,17 +528,18 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
                 new_products += 1
             db.execute(
                 """INSERT INTO products(
-                    platform,item_id,shop_id,title,category,price,historical_sold,monthly_sold,
+                    platform,item_id,shop_id,title,category,category_origin,price,historical_sold,monthly_sold,
                     historical_sold_text,monthly_sold_text,historical_sold_estimated,monthly_sold_estimated,
                     historical_sold_delta,monthly_sold_delta,price_delta,rating,review_count,created_at,
                     shop_name,shop_location,product_url,image_url,raw_json,capture_count,last_changed_at
                 ) VALUES (
-                    :platform,:item_id,:shop_id,:title,:category,:price,:historical_sold,:monthly_sold,
+                    :platform,:item_id,:shop_id,:title,:category,:category_origin,:price,:historical_sold,:monthly_sold,
                     :historical_sold_text,:monthly_sold_text,:historical_sold_estimated,:monthly_sold_estimated,
                     :historical_sold_delta,:monthly_sold_delta,:price_delta,:rating,:review_count,:created_at,
                     :shop_name,:shop_location,:product_url,:image_url,:raw_json,:capture_count,:last_changed_at
                 ) ON CONFLICT(platform,shop_id,item_id) DO UPDATE SET
-                    title=excluded.title, category=excluded.category, price=excluded.price,
+                    title=excluded.title, category=excluded.category,
+                    category_origin=excluded.category_origin, price=excluded.price,
                     historical_sold=excluded.historical_sold, monthly_sold=excluded.monthly_sold,
                     historical_sold_text=excluded.historical_sold_text,
                     monthly_sold_text=excluded.monthly_sold_text,
@@ -739,10 +786,10 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.5.3",
+        "version": "0.6.0",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
-        "features": ["Shopee/SHEIN 列表批量采集", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "features": ["Shopee/SHEIN 列表批量采集", "标准品类与手动改类", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
     }
 
 
