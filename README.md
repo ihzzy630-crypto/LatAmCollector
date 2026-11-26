@@ -6,7 +6,7 @@ Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的
 
 ## Windows EXE 安装
 
-1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.1/LatAmCollector-Setup-0.6.1-x64.exe)。安装包包含运行环境、选品雷达和 Chrome 采集助手。
+1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.7.0/LatAmCollector-Setup-0.7.0-x64.exe)。安装包包含运行环境、选品雷达和 Chrome 采集助手。
 2. 已安装过的用户选择原来的安装目录。安装器会识别 `D:\gpt专用文件\LatAmCollector`，每台电脑在各自安装目录的 `data` 文件夹存放商品库。
 3. 双击桌面的 **LatAmCollector** 打开选品雷达。需要 Windows 登录时启动服务，可在安装过程中勾选自动启动。
 4. 在 Chrome 按下文加载安装目录里的扩展文件夹。开始菜单的 **Chrome Helper Folder** 打开该目录。
@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 ## 更新选品雷达
 
-已经安装本地平台时，运行新版安装包并选择原来的安装目录。重启本地平台后，左侧版本显示 v0.6.1。
+已经安装本地平台时，运行新版安装包并选择原来的安装目录。重启本地平台后，左下角显示 v0.7.0。
 
 首次启动会整理商品库里的旧品类，随后按平台品类和葡语标题为新商品归类。品类旁的数字按当前应用的筛选条件计算。可以在商品右侧点击“改品类”纠正自动结果，也可以随时恢复自动分类。
 
@@ -54,7 +54,8 @@ powershell -ExecutionPolicy Bypass -File $setup
 - 价格区间、评分、评论数、上架年份、地区、分类和关键词筛选
 - 同一商品重复采集后的销量、月销和价格变化追踪
 - 选品参考分、生命周期、收藏候选与业务备注
-- 2025—2026 评论情绪、主题、媒体和关键词筛选
+- 大图卡片和表格视图，支持按商品打开对应的评论洞察
+- 评论评分分布、主题概览、原文，以及按年份、情绪、主题、媒体和关键词筛选
 - SQLite 本地存储和重复数据更新
 - 商品及评论 CSV/Excel 导出
 - 任务配置、数据源状态和运行日志
@@ -77,7 +78,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 点「一键开始」后，队列在独立标签页按顺序采集，在本页商品确认入库后使用网页上的下一页按钮。每个入口最多采集设置的页数，也会在最后一页或重复页结束。保留队列页和本地平台运行。碰到验证、登录或访问受限时，点「查看采集页」手动处理，再点「继续采集」。
 
-已经安装本地平台时，可以[单独下载新版 Chrome 助手](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.1/LatAmCollector-Chrome-v0.6.1.zip)。解压后，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
+已经安装本地平台时，可以[单独下载新版 Chrome 助手](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.7.0/LatAmCollector-Chrome-v0.7.0.zip)。解压后，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
 
 ## 后续接口
 

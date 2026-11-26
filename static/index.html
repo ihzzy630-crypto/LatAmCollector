@@ -1,228 +1,325 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LatAm Collector</title>
-  <style>
-    :root{--bg:#f4f6f8;--card:#fff;--ink:#15202b;--muted:#718096;--line:#e5e9ee;--brand:#ef553b;--brand2:#ff8068;--nav:#17232f;--ok:#16824b;--bad:#c53030;--blue:#2b6cb0}
-    *{box-sizing:border-box}body{margin:0;font-family:"Microsoft YaHei",Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}.layout{display:grid;grid-template-columns:230px 1fr;min-height:100vh}.side{background:var(--nav);color:#fff;padding:24px 16px;position:fixed;width:230px;height:100vh;overflow:auto}.logo{font-size:21px;font-weight:800;margin:0 9px 25px}.logo b{color:var(--brand2)}.logo small{display:block;font-size:11px;color:#9aa8b6;font-weight:400;margin-top:5px}nav button{display:block;width:100%;border:0;background:transparent;color:#b7c1cb;text-align:left;padding:12px 14px;border-radius:9px;margin:4px 0;font-size:14px;cursor:pointer}nav button:hover,nav button.active{background:#263746;color:#fff}.main{grid-column:2;padding:26px;max-width:1800px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}h1{font-size:25px;margin:0}.subtitle{color:var(--muted);font-size:13px;margin-top:5px}.status{font-size:12px;color:var(--ok);background:#e8f7ef;padding:7px 11px;border-radius:20px}
-    .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:13px;margin-bottom:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px;box-shadow:0 2px 8px #18222d0a}.metric{font-size:26px;font-weight:800;margin-top:8px}.label{font-size:12px;color:var(--muted)}.panel{background:var(--card);border:1px solid var(--line);border-radius:13px;margin-bottom:18px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line)}.panel-head h2{font-size:16px;margin:0}.body{padding:17px}.btn{border:0;background:var(--brand);color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}.btn:hover{filter:brightness(.96)}.btn.secondary{background:#eef1f4;color:#34404c}.btn.green{background:var(--ok)}.btn.tiny{padding:5px 8px;font-size:12px}.btn.star{background:transparent;color:#a0aec0;font-size:21px;padding:0}.btn.star.on{color:#f6ad20}
-    .filter-grid{display:grid;grid-template-columns:repeat(6,minmax(125px,1fr));gap:10px}.field label{display:block;font-size:11px;color:var(--muted);margin:0 0 5px}.field input,.field select{width:100%}input,select,textarea{border:1px solid #d8dee5;border-radius:8px;padding:9px 10px;background:#fff;min-width:0}input:focus,select:focus,textarea:focus{outline:2px solid #ef553b22;border-color:var(--brand)}.year-picks{display:flex;align-items:center;gap:7px;min-height:36px;border:1px solid #d8dee5;border-radius:8px;padding:6px 9px;background:#fff}.year-picks label{display:flex;align-items:center;gap:2px;margin:0;font-size:12px;white-space:nowrap}.year-picks input{width:auto;margin:0}.filter-actions{display:flex;gap:8px;align-items:end}.hint{padding:10px 14px;background:#fff8e8;color:#775b17;border-radius:8px;font-size:12px;line-height:1.6;margin-top:12px}
-    table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:#667382;background:#fafbfc;font-weight:600;white-space:nowrap}th,td{padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:top}td.title{min-width:260px;max-width:380px}a{color:#e44b34;text-decoration:none}.product-thumb{width:78px;height:78px;border:1px solid var(--line);border-radius:9px;background:#f7f8fa;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-size:11px;text-align:center}.product-thumb.mini{width:44px;height:44px;border-radius:7px;flex:0 0 44px}.product-thumb img{width:100%;height:100%;object-fit:cover;display:block}.mover-product{display:flex;align-items:center;gap:9px;min-width:260px}.pill{display:inline-block;padding:3px 7px;border-radius:12px;background:#eef1f4;color:#52606d;white-space:nowrap;margin:1px}.pill.hot{background:#fff0ed;color:#d83d27}.pill.ok{background:#e7f6ed;color:#14733c}.pill.warn{background:#fff4db;color:#866000}.pill.blue{background:#e9f2fb;color:#245d91}.delta.up{color:var(--ok)}.delta.down{color:var(--bad)}.score{font-weight:800;font-size:16px;color:var(--brand)}.page{display:none}.page.active{display:block}.empty{text-align:center;color:var(--muted);padding:42px}.upload{border:2px dashed #d8dee5;border-radius:12px;padding:32px;text-align:center;background:#fafbfc}.upload input{display:none}.sources{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.source h3{margin:0 0 8px}.source p{color:var(--muted);font-size:13px;min-height:40px}.tag{font-size:11px;padding:4px 7px;border-radius:10px;background:#fff4db;color:#866000}.tag.ready{background:#e7f6ed;color:#14733c}
-    .toast{position:fixed;right:24px;bottom:24px;background:#18222d;color:#fff;border-radius:9px;padding:13px 18px;display:none;max-width:460px;z-index:20}.log{font-family:Consolas,monospace;font-size:12px;padding:10px;border-bottom:1px solid var(--line)}.modal{display:none;position:fixed;inset:0;background:#0006;align-items:center;justify-content:center;z-index:10}.modal.open{display:flex}.modal-card{background:#fff;width:460px;max-width:92vw;border-radius:14px;padding:23px}.form-row{margin:13px 0}.form-row label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}.form-row input,.form-row select{width:100%}.pager{display:flex;justify-content:space-between;align-items:center;padding:14px 17px}.bar-row{display:grid;grid-template-columns:90px 1fr 70px;align-items:center;gap:9px;margin:9px 0;font-size:12px}.bar{height:9px;background:#edf0f3;border-radius:8px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand2));border-radius:8px}.topic-wrap{display:flex;flex-wrap:wrap;gap:8px}.topic-card{border:1px solid var(--line);border-radius:9px;padding:10px 13px;min-width:120px}.topic-card b{display:block;font-size:19px;margin-top:4px}.two-col{display:grid;grid-template-columns:2fr 1fr;gap:16px}.note-text{color:var(--blue);font-size:11px;margin-top:4px}.capture-box{font-size:13px;line-height:1.8}.capture-box b{color:var(--brand)}
-    .main,.field{min-width:0}
-    .category-editor{width:430px;max-width:calc(100% - 32px);padding:22px;border:1px solid var(--line);border-radius:14px;color:var(--ink);box-shadow:0 16px 55px #15202b35}
-    .category-editor::backdrop{background:#17232f66}
-    .category-editor h2{margin:0;font-size:18px}
-    .category-editor p{word-break:break-word}
-    .category-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
-    .category-error{color:var(--bad);font-size:12px;margin:8px 0 0}
-    .category-tag{white-space:nowrap}
-    .product-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
-    @media(max-width:1250px){.cards{grid-template-columns:repeat(3,1fr)}.filter-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static;width:auto;height:auto}.main{grid-column:1;padding:16px}.cards,.sources,.two-col{grid-template-columns:1fr 1fr}.side nav{display:flex;overflow:auto}.side nav button{min-width:100px}.filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  </style>
+  <link rel="stylesheet" href="/static/app.css?v=0.7.0">
+  <script src="/static/app.js?v=0.7.0" defer></script>
 </head>
-<body><div class="layout">
-  <aside class="side"><div class="logo"><b>LatAm</b> Collector<small>巴西电商选品与评论平台 v0.6.1</small></div><nav>
-    <button class="active" data-page="dashboard">▦　经营仪表盘</button><button data-page="products">▤　选品雷达</button><button data-page="reviews">★　评论洞察</button><button data-page="tasks">◷　任务中心</button><button data-page="sources">⌁　采集助手</button><button data-page="import">⇧　数据导入</button><button data-page="exports">⇩　导出中心</button><button data-page="logs">≡　运行日志</button>
-  </nav></aside>
-  <main class="main"><div class="top"><div><h1 id="page-title">经营仪表盘</h1><div class="subtitle">采集公开数据、追踪变化、筛选机会并沉淀消费者声音</div></div><div class="status">● 本地服务运行中</div></div>
-    <section id="dashboard" class="page active"><div class="cards">
-      <div class="card"><div class="label">商品总数</div><div class="metric" id="stat-products">0</div></div><div class="card"><div class="label">月销≥1,000 且 R$32+</div><div class="metric" id="stat-qualified">0</div></div><div class="card"><div class="label">2025—2026 评论</div><div class="metric" id="stat-reviews">0</div></div><div class="card"><div class="label">收藏候选</div><div class="metric" id="stat-favorites">0</div></div><div class="card"><div class="label">采集响应</div><div class="metric" id="stat-captures">0</div></div><div class="card"><div class="label">任务配置</div><div class="metric" id="stat-tasks">0</div></div>
-    </div><div class="two-col"><div class="panel"><div class="panel-head"><h2>品类月销概览</h2><span class="label">来自当前商品库</span></div><div class="body" id="category-bars"><div class="empty">暂无数据</div></div></div><div class="panel"><div class="panel-head"><h2>销量数据可信度</h2></div><div class="body" id="quality-box"></div></div></div><div class="panel"><div class="panel-head"><h2>最近发生变化的商品</h2><button class="btn secondary" onclick="showPage('products')">进入选品雷达</button></div><div style="overflow:auto"><table><thead><tr><th>商品</th><th>月销量</th><th>月销变化</th><th>累计变化</th><th>价格变化</th><th>最近更新</th></tr></thead><tbody id="mover-rows"></tbody></table></div></div></section>
-
-    <section id="products" class="page"><div class="panel"><div class="panel-head"><h2>商品筛选与选品评分</h2><button class="btn secondary" onclick="loadProducts(1)">刷新</button></div><div class="body"><div class="filter-grid">
-      <div class="field"><label>标题或店铺</label><input id="q" placeholder="关键词"></div><div class="field"><label>平台</label><select id="platform" onchange="platformPreset(this.value)"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div><div class="field"><label for="category">品类（匹配商品数）</label><select id="category"><option value="">全部分类</option></select></div><div class="field"><label>价格最低（R$）</label><input id="min-price" type="number" value="32" min="0"></div><div class="field"><label>价格最高（R$）</label><input id="max-price" type="number" placeholder="不限"></div><div class="field"><label>销量口径</label><select id="sales-metric"><option value="monthly">月销量（若平台公开）</option><option value="historical">累计销量</option></select></div><div class="field"><label>销量可信度</label><select id="sales-quality"><option value="">全部</option><option value="exact">只看精确值</option><option value="estimated">只看估算档位</option></select></div>
-      <div class="field"><label>最低销量</label><input id="min-sales" type="number" value="1000" min="0"></div><div class="field"><label>最高销量</label><input id="max-sales" type="number" placeholder="不限" min="0"></div><div class="field"><label>本次最低增长</label><input id="min-growth" type="number" placeholder="如 100"></div><div class="field"><label>最低评分</label><input id="min-rating" type="number" min="0" max="5" step="0.1" placeholder="如 4.5"></div><div class="field"><label>最低评论数</label><input id="min-reviews" type="number" min="0" placeholder="如 100"></div><div class="field"><label>店铺所在地</label><select id="location"><option value="">全部地区</option></select></div>
-      <div class="field"><label>上架年份（可多选）</label><div class="year-picks"><label><input class="product-year" type="checkbox" value="2024" checked>2024</label><label><input class="product-year" type="checkbox" value="2025" checked>2025</label><label><input class="product-year" type="checkbox" value="2026" checked>2026</label></div></div><div class="field"><label>商品范围</label><select id="favorite"><option value="">全部商品</option><option value="1">只看收藏</option></select></div><div class="field"><label>商品图片</label><select id="image-state"><option value="">全部</option><option value="with">只看有图</option><option value="missing">检查缺图</option></select></div><div class="field"><label>排序方式</label><select id="sort-by"><option value="monthly_sold">月销量</option><option value="historical_sold">累计销量</option><option value="growth">本次销量变化</option><option value="opportunity">选品参考分</option><option value="newest">最新上架</option><option value="rating">评分</option><option value="reviews">评论数</option><option value="price">价格</option><option value="updated">最近采集</option></select></div><div class="filter-actions"><button class="btn" onclick="loadProducts(1)">应用筛选</button><button class="btn secondary" onclick="clearProductFilters()">清空</button></div>
-    </div><div class="hint"><b>销量说明：</b>Shopee / SHEIN 只公开“1千+ / 7,2k+”时会标记为“估算”，数值按公开档位下限保存；没有公开月销量时保持为 0，不伪造数字。重复采集同一商品后，“变化”列才会产生趋势。</div></div><div style="overflow:auto"><table><thead><tr><th>收藏</th><th>图片</th><th>商品</th><th>品类</th><th>价格</th><th>累计销量</th><th>月销量</th><th>本次变化</th><th>参考分/阶段</th><th>评分/评论</th><th>上架</th><th>操作</th></tr></thead><tbody id="product-rows"></tbody></table></div><div class="pager"><span class="label" id="product-total"></span><div><button class="btn secondary" onclick="loadProducts(productPage-1)">上一页</button> <span id="product-page" class="label"></span> <button class="btn secondary" onclick="loadProducts(productPage+1)">下一页</button></div></div></div></section>
-
-    <section id="reviews" class="page"><div class="panel"><div class="panel-head"><h2>评论筛选</h2><button class="btn secondary" onclick="loadReviews(1)">刷新</button></div><div class="body"><div class="filter-grid">
-      <div class="field"><label>平台</label><select id="review-platform"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div><div class="field"><label>起始年份</label><input id="review-year-from" type="number" value="2025"></div><div class="field"><label>结束年份</label><input id="review-year-to" type="number" value="2026"></div><div class="field"><label>情绪（按星级）</label><select id="review-sentiment"><option value="">全部</option><option value="positive">正向 4—5 星</option><option value="neutral">中性 3 星</option><option value="negative">负向 1—2 星</option></select></div><div class="field"><label>消费者主题</label><select id="review-topic"><option value="">全部主题</option><option>物流时效</option><option>质量做工</option><option>包装破损</option><option>尺寸规格</option><option>性价比</option><option>商品一致</option></select></div><div class="field"><label>图片/视频</label><select id="review-media"><option value="">不限</option><option value="1">有媒体</option><option value="0">无媒体</option></select></div><div class="field"><label>评论关键词</label><input id="review-q" placeholder="葡萄牙语关键词"></div><div class="field"><label>商品 ID</label><input id="review-item" placeholder="精准定位商品"></div><div class="filter-actions"><button class="btn" onclick="loadReviews(1)">应用筛选</button></div>
-    </div></div></div><div class="panel"><div class="panel-head"><h2>消费者声音概览</h2><span class="label">主题为葡萄牙语关键词辅助归类</span></div><div class="body"><div class="topic-wrap" id="review-insights"></div></div></div><div class="panel"><div style="overflow:auto"><table><thead><tr><th>日期</th><th>情绪/星级</th><th>评论内容</th><th>主题</th><th>规格</th><th>商品</th><th>媒体</th></tr></thead><tbody id="review-rows"></tbody></table></div><div class="pager"><span class="label" id="review-total"></span><div><button class="btn secondary" onclick="loadReviews(reviewPage-1)">上一页</button> <span id="review-page" class="label"></span> <button class="btn secondary" onclick="loadReviews(reviewPage+1)">下一页</button></div></div></div></section>
-
-    <section id="tasks" class="page"><div class="panel"><div class="panel-head"><h2>任务计划</h2><button class="btn" onclick="openTask()">+ 新建任务</button></div><div class="body hint">当前任务中心用于保存采集计划，不会在你不知情时自动操作网站。后续接入合规调度器后再启用实际运行。</div><div style="overflow:auto"><table><thead><tr><th>名称</th><th>平台</th><th>类型</th><th>运行方式</th><th>状态</th><th>创建时间</th></tr></thead><tbody id="task-rows"></tbody></table></div></div></section>
-    <section id="sources" class="page"><div class="sources"><div class="card source"><h3>Shopee 巴西</h3><span class="tag ready">Chrome 助手 v0.5.3</span><p>支持分类/搜索结果批量分页、商品缩略图、历史补图、暂停续采，以及商品详情和评论响应采集。</p></div><div class="card source"><h3>SHEIN 巴西</h3><span class="tag ready">Chrome 助手 v0.5.3</span><p>支持页面商品卡片、公开商品/评论响应、安全节奏滚动与严格分页；遇到验证、空结果或拒绝访问会暂停并保留进度。</p></div><div class="card source"><h3>Mercado Livre</h3><span class="tag">规划中</span><p>优先研究官方 API；公开数据与授权数据分开标记来源。</p></div></div><div class="panel" style="margin-top:18px"><div class="panel-head"><h2>采集状态</h2><button class="btn secondary" onclick="loadCaptureStatus()">刷新</button></div><div class="body capture-box" id="capture-status">正在读取…</div></div><div class="panel"><div class="panel-head"><h2>使用方式</h2></div><div class="body"><p>打开 Shopee 或 SHEIN 巴西站商品列表并刷新一次，然后打开扩展，点击“一键采集当前商品列表”。SHEIN 会自动滚动并在存在分页时继续下一页；页面保持打开即可。</p><p class="label">扩展目录：<code>D:\gpt专用文件\LatAmCollector\chrome_extension</code>。升级后请在 <code>chrome://extensions</code> 点击该扩展的“重新加载”。</p></div></div></section>
-    <section id="import" class="page"><div class="panel"><div class="panel-head"><h2>导入原始数据</h2></div><div class="body"><div class="upload"><h3>选择 Shopee / SHEIN JSON 文件</h3><p class="label">支持商品列表、详情和评论响应；重复导入会更新商品并计算变化。</p><label class="btn">选择文件<input id="json-file" type="file" accept=".json,.txt" onchange="importFile(this.files[0])"></label><div id="import-state" style="margin-top:15px"></div></div></div></div></section>
-    <section id="exports" class="page"><div class="panel"><div class="panel-head"><h2>数据导出</h2></div><div class="body"><p><b>商品数据</b>（含原始销量文字、精确/估算标记、销量变化、收藏与备注）</p><a class="btn green" href="/api/export/products.xlsx">导出 Excel</a> <a class="btn secondary" href="/api/export/products.csv">导出 CSV</a><hr style="border:0;border-top:1px solid #e6eaee;margin:24px 0"><p><b>评论数据</b></p><a class="btn green" href="/api/export/reviews.xlsx">导出 Excel</a> <a class="btn secondary" href="/api/export/reviews.csv">导出 CSV</a></div></div></section>
-    <section id="logs" class="page"><div class="panel"><div class="panel-head"><h2>最近运行日志</h2><button class="btn secondary" onclick="loadLogs()">刷新</button></div><div id="log-rows"></div></div></section>
-  </main></div>
-<div class="modal" id="task-modal"><div class="modal-card"><h2>新建采集任务</h2><div class="form-row"><label>任务名称</label><input id="task-name" value="五金商品追踪"></div><div class="form-row"><label>平台</label><select id="task-platform"><option value="shopee">Shopee 巴西</option><option value="shein">SHEIN 巴西</option><option value="mercadolivre">Mercado Livre（待开发）</option></select></div><div class="form-row"><label>任务类型</label><select id="task-type"><option>商品采集</option><option>评论采集</option><option>价格与销量追踪</option></select></div><div class="form-row"><label>运行方式</label><select id="task-schedule"><option>手动</option><option>每天 02:00（仅保存计划）</option></select></div><button class="btn" onclick="saveTask()">保存任务</button> <button class="btn secondary" onclick="closeTask()">取消</button></div></div><div class="toast" id="toast"></div>
-<dialog id="category-editor" class="category-editor" aria-labelledby="category-editor-title">
-  <form id="category-editor-form">
-    <h2 id="category-editor-title">修改品类</h2>
-    <p id="category-editor-product" class="label"></p>
-    <div class="field">
-      <label for="category-editor-select">品类</label>
-      <select id="category-editor-select" required></select>
-    </div>
-    <p id="category-editor-error" class="category-error" role="alert" hidden></p>
-    <div class="category-actions">
-      <button class="btn" type="submit">保存品类</button>
-      <button class="btn secondary" type="button" id="category-editor-reset">恢复自动分类</button>
-      <button class="btn secondary" type="button" id="category-editor-cancel">取消</button>
-    </div>
-  </form>
-</dialog>
-<script>
-const titles={dashboard:'经营仪表盘',products:'选品雷达',reviews:'评论洞察',tasks:'任务中心',sources:'采集助手',import:'数据导入',exports:'导出中心',logs:'运行日志'};let productPage=1,productPages=1,reviewPage=1,reviewPages=1;
-let categoryGroups = [];
-let latestProductRequest = 0;
-let editingCategoryId = null;
-let categorySavePending = false;
-const categorySource = {platform:'平台品类', title:'按商品标题分类', legacy:'历史品类', manual:'手动分类', unknown:'待整理'};
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const num=v=>Number(v||0).toLocaleString();const money=v=>'R$ '+Number(v||0).toFixed(2);
-function webUrl(v){try{const u=new URL(String(v||''));return ['http:','https:'].includes(u.protocol)?u.href:''}catch(_){return ''}}function productImage(x,mini=false){const src=webUrl(x.image_url),target=webUrl(x.product_url)||src,open=target?` href="${esc(target)}" target="_blank" rel="noreferrer"`:'';return `<a class="product-thumb${mini?' mini':''}"${open}>${src?`<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(src)}" alt="${esc(x.title||'商品图片')}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>图片失效</span>`:'<span>暂无图片</span>'}</a>`}
-function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',3800)}async function api(url,options){const r=await fetch(url,options);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||('请求失败 '+r.status));return d}function delta(v,prefix=''){v=Number(v||0);if(!v)return '<span class="label">—</span>';return `<span class="delta ${v>0?'up':'down'}">${v>0?'+':''}${prefix}${num(v)}</span>`}
-function salesCell(x,type){const value=Number(x[type+'_sold']||0),quality=x[type+'_sold_quality']||'未知',text=x[type+'_sold_text']||'';if(quality==='未知'){const label=type==='monthly'&&x.platform==='shein'?'未公开':'未捕获';return `<b>—</b> <span class="pill">${label}</span>`}const color=quality==='估算'?'warn':'ok';return `<b>${num(value)}</b> <span class="pill ${color}">${esc(quality)}</span><br><span class="label">${esc(text)}</span>`}
-function showPage(page){document.querySelectorAll('nav button,.page').forEach(x=>x.classList.remove('active'));const b=document.querySelector(`nav button[data-page="${page}"]`);if(b)b.classList.add('active');document.getElementById(page).classList.add('active');document.getElementById('page-title').textContent=titles[page];if(page==='products')loadProducts(productPage);if(page==='reviews'){loadReviewInsights();loadReviews(reviewPage)}if(page==='tasks')loadTasks();if(page==='sources')loadCaptureStatus();if(page==='logs')loadLogs();history.replaceState(null,'','?page='+page)}document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
-async function loadStats(){try{const s=await api('/api/stats');for(const k of ['products','qualified','reviews','favorites','captures','tasks'])document.getElementById('stat-'+k).textContent=num(s[k]);if(s.last_capture)document.querySelector('.subtitle').textContent='最近采集：'+s.last_capture}catch(e){toast(e.message)}}
-async function loadAnalytics(){try{const d=await api('/api/analytics'),max=Math.max(1,...d.categories.map(x=>Number(x.monthly_sales||0)));document.getElementById('category-bars').innerHTML=d.categories.length?d.categories.map(x=>`<div class="bar-row"><span>${esc(x.category)}</span><div class="bar"><i style="width:${Math.max(2,Number(x.monthly_sales||0)/max*100)}%"></i></div><b>${num(x.monthly_sales)}</b></div>`).join(''):'<div class="empty">采集商品后显示品类分布</div>';const q=d.sales_quality||{};document.getElementById('quality-box').innerHTML=`<div class="topic-wrap"><div class="topic-card">精确月销量<b>${num(q.exact_count)}</b></div><div class="topic-card">估算档位<b>${num(q.estimated_count)}</b></div><div class="topic-card">暂缺月销量<b>${num(q.missing_count)}</b></div></div><p class="label">估算值是“1千+ / 10万+”等公开档位的下限，平台不会伪造精确数字。</p>`;document.getElementById('mover-rows').innerHTML=d.movers.length?d.movers.map(x=>`<tr><td><div class="mover-product">${productImage(x,true)}<b>${esc(x.title)}</b></div></td><td>${num(x.monthly_sold)}</td><td>${delta(x.monthly_sold_delta)}</td><td>${delta(x.historical_sold_delta)}</td><td>${delta(x.price_delta,'R$ ')}</td><td>${esc(x.imported_at)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">同一商品采集两次并发生变化后，这里会显示趋势。</td></tr>'}catch(e){toast(e.message)}}
-async function loadOptions() {
-  try {
-    const data = await api('/api/product-options');
-    const region = document.getElementById('location');
-    const selected = region.value;
-    region.replaceChildren(new Option('全部地区', ''), ...data.locations.map(name => new Option(name, name)));
-    region.value = data.locations.includes(selected) ? selected : '';
-  } catch (_) {}
-}
-
-function fillCategorySelect(select, selected, counts = null) {
-  const options = [];
-  if (counts) {
-    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    options.push(new Option(`全部分类（${num(total)}）`, ''));
-  }
-  for (const [group, labels] of categoryGroups) {
-    const section = document.createElement('optgroup');
-    section.label = group;
-    for (const label of labels) {
-      const name = counts ? `${label}（${num(counts[label])}）` : label;
-      section.append(new Option(name, label));
-    }
-    options.push(section);
-  }
-  select.replaceChildren(...options);
-  select.value = categoryGroups.some(([, labels]) => labels.includes(selected)) ? selected : '';
-}
-function productParams(page){const years=[...document.querySelectorAll('.product-year:checked')].map(x=>x.value).join(',');return new URLSearchParams({q:document.getElementById('q').value,platform:document.getElementById('platform').value,category:document.getElementById('category').value,min_price:document.getElementById('min-price').value,max_price:document.getElementById('max-price').value,sales_metric:document.getElementById('sales-metric').value,sales_quality:document.getElementById('sales-quality').value,min_sales:document.getElementById('min-sales').value,max_sales:document.getElementById('max-sales').value,min_growth:document.getElementById('min-growth').value,min_rating:document.getElementById('min-rating').value,min_reviews:document.getElementById('min-reviews').value,location:document.getElementById('location').value,favorite:document.getElementById('favorite').value,image_state:document.getElementById('image-state').value,sort_by:document.getElementById('sort-by').value,years,page:String(page),page_size:'50'})}
-function platformPreset(value) {
-  document.getElementById('category').value = '';
-  if (value === 'shein' || value === 'shopee') {
-    const salesMetric = value === 'shein' ? 'historical' : 'monthly';
-    document.getElementById('sales-metric').value = salesMetric;
-    document.getElementById('min-sales').value = value === 'shein' ? '0' : '1000';
-    document.getElementById('sort-by').value = salesMetric + '_sold';
-  }
-  loadProducts(1);
-}
-
-function productRow(product, metric) {
-  const id = Number(product.id);
-  const productUrl = webUrl(product.product_url);
-  const origin = categorySource[product.category_origin] || categorySource.unknown;
-  const categoryLabel = product.category_origin === 'manual' ? '<span class="label">手动</span>' : '';
-  return `<tr>
-    <td><button class="btn star ${product.is_favorite ? 'on' : ''}" onclick="toggleFavorite(${id},${product.is_favorite ? 0 : 1})" aria-label="切换收藏">★</button></td>
-    <td>${productImage(product)}</td>
-    <td class="title">
-      <b>${esc(product.title)}</b><br>
-      <span class="pill blue">${esc(String(product.platform || '').toUpperCase())}</span>
-      <span class="label">${esc(product.shop_name || '')} · 采集 ${num(product.capture_count)} 次</span>
-      ${product.note ? `<div class="note-text">备注：${esc(product.note)}</div>` : ''}
-    </td>
-    <td><span class="pill category-tag" title="${esc(origin)}">${esc(product.category)}</span><br>${categoryLabel}</td>
-    <td>${money(product.price)}<br>${delta(product.price_delta, 'R$ ')}</td>
-    <td>${salesCell(product, 'historical')}</td>
-    <td>${salesCell(product, 'monthly')}</td>
-    <td>${delta(product[metric + '_sold_delta'])}</td>
-    <td><span class="score">${esc(product.opportunity_score)}</span><br><span class="pill blue">${esc(product.lifecycle)}</span></td>
-    <td>${Number(product.rating || 0).toFixed(2)}<br><span class="label">${num(product.review_count)} 条</span></td>
-    <td>${esc((product.created_at || '').slice(0, 10))}</td>
-    <td>
-      ${productUrl ? `<a target="_blank" rel="noreferrer" href="${esc(productUrl)}">打开</a>` : ''}
-      <div class="product-actions">
-        <button class="btn secondary tiny" onclick="editCategory(${id})">改品类</button>
-        <button class="btn secondary tiny" onclick="editNote(${id})">备注</button>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="?page=dashboard" data-route>
+        <span class="brand-mark" aria-hidden="true">L</span>
+        <span><strong>LatAm Collector</strong><small>巴西电商选品</small></span>
+      </a>
+      <nav class="navigation" aria-label="主导航">
+        <div class="nav-group">
+          <span class="nav-label">工作台</span>
+          <a href="?page=dashboard" data-route data-page="dashboard" aria-current="page"><span class="nav-icon" aria-hidden="true">▦</span>经营仪表盘</a>
+          <a href="?page=products" data-route data-page="products"><span class="nav-icon" aria-hidden="true">▤</span>选品雷达</a>
+          <a href="?page=reviews" data-route data-page="reviews"><span class="nav-icon" aria-hidden="true">▱</span>评论洞察</a>
+          <a href="?page=tasks" data-route data-page="tasks"><span class="nav-icon" aria-hidden="true">◷</span>任务中心</a>
+        </div>
+        <div class="nav-group">
+          <span class="nav-label">数据管理</span>
+          <a href="?page=sources" data-route data-page="sources"><span class="nav-icon" aria-hidden="true">◎</span>采集助手</a>
+          <a href="?page=import" data-route data-page="import"><span class="nav-icon" aria-hidden="true">↑</span>数据导入</a>
+          <a href="?page=exports" data-route data-page="exports"><span class="nav-icon" aria-hidden="true">↓</span>导出中心</a>
+          <a href="?page=logs" data-route data-page="logs"><span class="nav-icon" aria-hidden="true">≡</span>运行日志</a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="service-status" class="service-status" role="status">连接本地服务</span>
+        <span id="app-version" class="app-version"></span>
       </div>
-    </td>
-  </tr>`;
-}
+    </aside>
 
-async function loadProducts(page = 1) {
-  const requestId = ++latestProductRequest;
-  const params = productParams(Math.max(1, Math.min(page, productPages)));
-  try {
-    const data = await api('/api/products?' + params);
-    if (requestId !== latestProductRequest) return;
-    productPage = data.page;
-    productPages = Math.max(1, Math.ceil(data.total / data.page_size));
-    categoryGroups = data.category_groups;
-    const category = document.getElementById('category');
-    fillCategorySelect(category, category.value, data.category_counts);
-    const metric = params.get('sales_metric');
-    const rows = data.items.map(product => productRow(product, metric)).join('');
-    document.getElementById('product-rows').innerHTML = rows ||
-      '<tr><td colspan="12" class="empty">没有符合当前条件的商品。可选择全部分类，或调整价格和销量筛选。</td></tr>';
-    window.currentProducts = Object.fromEntries(data.items.map(product => [product.id, product]));
-    document.getElementById('product-total').textContent = `共 ${num(data.total)} 条 · 每页 ${data.page_size} 条`;
-    document.getElementById('product-page').textContent = `第 ${productPage} / ${productPages} 页`;
-  } catch (error) {
-    if (requestId === latestProductRequest) toast(error.message);
-  }
-}
+    <main class="main" id="main">
+      <header class="page-header">
+        <div>
+          <h1 id="page-title" tabindex="-1">经营仪表盘</h1>
+          <p id="page-subtitle" class="subtitle">正在读取采集记录</p>
+        </div>
+        <button class="btn secondary" type="button" id="refresh-page"><span aria-hidden="true">↻</span> 刷新数据</button>
+      </header>
 
-function editCategory(id) {
-  const product = window.currentProducts?.[id];
-  if (categorySavePending || !product) return;
-  editingCategoryId = id;
-  document.getElementById('category-editor-product').textContent = product.title;
-  fillCategorySelect(document.getElementById('category-editor-select'), product.category);
-  document.getElementById('category-editor-error').hidden = true;
-  document.getElementById('category-editor').showModal();
-}
+      <section id="dashboard" class="page" aria-labelledby="page-title">
+        <div class="metrics">
+          <div class="metric-card metric-primary">
+            <span class="metric-label">商品总数</span><strong id="stat-products">—</strong>
+            <a href="?page=products" data-route>打开选品雷达 <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">符合选品条件</span><strong id="stat-qualified">—</strong>
+            <small>月销 ≥ 1,000 · R$ 32+</small>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">2025–2026 评论</span><strong id="stat-reviews">—</strong>
+            <a href="?page=reviews" data-route>查看评论 <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="metric-card"><span class="metric-label">收藏候选</span><strong id="stat-favorites">—</strong></div>
+          <div class="metric-card"><span class="metric-label">采集响应</span><strong id="stat-captures">—</strong></div>
+          <div class="metric-card"><span class="metric-label">任务计划</span><strong id="stat-tasks">—</strong></div>
+        </div>
 
-async function saveCategory(category) {
-  if (categorySavePending || editingCategoryId === null) return;
-  categorySavePending = true;
-  const dialog = document.getElementById('category-editor');
-  const error = document.getElementById('category-editor-error');
-  const buttons = [...dialog.querySelectorAll('button')];
-  error.hidden = true;
-  buttons.forEach(button => { button.disabled = true; });
-  try {
-    await api('/api/products/' + editingCategoryId, {
-      method: 'PATCH',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({category})
-    });
-    dialog.close();
-    toast(category === null ? '已恢复自动分类' : '品类已保存');
-    loadProducts(productPage);
-    loadAnalytics();
-  } catch (failure) {
-    error.textContent = failure.message;
-    error.hidden = false;
-  } finally {
-    categorySavePending = false;
-    buttons.forEach(button => { button.disabled = false; });
-  }
-}
+        <div class="dashboard-charts">
+          <section class="panel">
+            <div class="panel-head"><h2>品类月销</h2><span class="muted small">已入库商品合计</span></div>
+            <div class="panel-body chart-scroll" id="category-bars"><p class="empty">正在读取品类数据…</p></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>月销量数据来源</h2></div>
+            <div class="panel-body" id="quality-box"><p class="empty">正在读取销量数据…</p></div>
+          </section>
+        </div>
 
-document.getElementById('category-editor-form').addEventListener('submit', event => {
-  event.preventDefault();
-  saveCategory(document.getElementById('category-editor-select').value);
-});
-document.getElementById('category-editor-reset').onclick = () => saveCategory(null);
-document.getElementById('category-editor-cancel').onclick = () => document.getElementById('category-editor').close();
-document.getElementById('category-editor').addEventListener('cancel', event => {
-  if (categorySavePending) event.preventDefault();
-});
-function clearProductFilters(){for(const id of ['q','min-price','max-price','min-sales','max-sales','min-growth','min-rating','min-reviews'])document.getElementById(id).value='';for(const id of ['platform','category','sales-quality','location','favorite','image-state'])document.getElementById(id).value='';document.getElementById('sales-metric').value='monthly';document.getElementById('sort-by').value='monthly_sold';document.querySelectorAll('.product-year').forEach(x=>x.checked=true);loadProducts(1)}async function toggleFavorite(id,value){try{await api('/api/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_favorite:!!value})});loadProducts(productPage);loadStats()}catch(e){toast(e.message)}}async function editNote(id){const current=window.currentProducts?.[id]?.note||'',note=prompt('填写成本、供应商、风险点等选品备注：',current);if(note===null)return;try{await api('/api/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});loadProducts(productPage)}catch(e){toast(e.message)}}
-function reviewParams(page){return new URLSearchParams({platform:document.getElementById('review-platform').value,year_from:document.getElementById('review-year-from').value||2025,year_to:document.getElementById('review-year-to').value||2026,sentiment:document.getElementById('review-sentiment').value,topic:document.getElementById('review-topic').value,has_media:document.getElementById('review-media').value,q:document.getElementById('review-q').value,item_id:document.getElementById('review-item').value,page:String(page),page_size:'50'})}
-async function loadReviews(page=1){page=Math.max(1,Math.min(page,reviewPages||1));try{const d=await api('/api/reviews?'+reviewParams(page));reviewPage=d.page;reviewPages=Math.max(1,Math.ceil(d.total/d.page_size));document.getElementById('review-rows').innerHTML=d.items.length?d.items.map(x=>`<tr><td>${esc((x.review_time||'').slice(0,10))}</td><td><span class="pill ${x.sentiment==='负向'?'hot':x.sentiment==='正向'?'ok':''}">${esc(x.sentiment)}</span><br>${'★'.repeat(x.rating)}</td><td class="title">${esc(x.comment||'（无文字）')}</td><td>${x.topics.length?x.topics.map(t=>`<span class="pill blue">${esc(t)}</span>`).join(''):'—'}</td><td>${esc(x.variant)}</td><td>${esc(x.title||x.item_id)}</td><td>${x.media_count}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">暂无符合条件的评论。进入商品评论区并翻页后会自动收集。</td></tr>';document.getElementById('review-total').textContent='共 '+num(d.total)+' 条';document.getElementById('review-page').textContent=`第 ${reviewPage} / ${reviewPages} 页`;loadReviewInsights()}catch(e){toast(e.message)}}async function loadReviewInsights(){try{const from=document.getElementById('review-year-from').value||2025,to=document.getElementById('review-year-to').value||2026,platform=encodeURIComponent(document.getElementById('review-platform').value),d=await api(`/api/review-insights?year_from=${from}&year_to=${to}&platform=${platform}`),pieces=[['评论总数',d.total],['有文字',d.with_text],['有图片/视频',d.with_media],['正向',d.sentiments['正向']],['中性',d.sentiments['中性']],['负向',d.sentiments['负向']],...Object.entries(d.topics)];document.getElementById('review-insights').innerHTML=pieces.map(([k,v])=>`<div class="topic-card">${esc(k)}<b>${num(v)}</b></div>`).join('')+`<div class="label" style="width:100%">${esc(d.note)}</div>`}catch(e){toast(e.message)}}
-async function importFile(file){if(!file)return;const state=document.getElementById('import-state');state.textContent='正在导入 '+file.name+'…';try{const text=await file.text();JSON.parse(text);const d=await api('/api/import/json',{method:'POST',headers:{'Content-Type':'application/json'},body:text});state.textContent='✓ '+d.message;toast(d.message);loadStats();loadAnalytics();loadOptions()}catch(e){state.textContent='✗ '+e.message}}async function loadTasks(){try{const d=await api('/api/tasks');document.getElementById('task-rows').innerHTML=d.length?d.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.platform)}</td><td>${esc(x.task_type)}</td><td>${esc(x.schedule)}</td><td><span class="pill">${esc(x.status)}</span></td><td>${esc(x.created_at)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">还没有保存任务计划。</td></tr>'}catch(e){toast(e.message)}}function openTask(){document.getElementById('task-modal').classList.add('open')}function closeTask(){document.getElementById('task-modal').classList.remove('open')}async function saveTask(){const body={name:document.getElementById('task-name').value,platform:document.getElementById('task-platform').value,task_type:document.getElementById('task-type').value,schedule:document.getElementById('task-schedule').value};try{await api('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});closeTask();loadTasks();loadStats();toast('任务计划已保存')}catch(e){toast(e.message)}}
-async function loadCaptureStatus(){try{const d=await api('/api/capture-status'),last=d.last,t=d.totals;document.getElementById('capture-status').innerHTML=`累计捕获 <b>${num(t.events)}</b> 个响应，识别商品 <b>${num(t.products)}</b> 条次，评论 <b>${num(t.reviews)}</b> 条次。<br>${last?`最近一次：${esc(last.captured_at)} · ${esc(last.source_type)} · 新增商品 ${num(last.new_product_count)} · 新增评论 ${num(last.new_review_count)}`:'还没有采集记录。'}`}catch(e){document.getElementById('capture-status').textContent=e.message}}async function loadLogs(){try{const d=await api('/api/logs');document.getElementById('log-rows').innerHTML=d.length?d.map(x=>`<div class="log">[${esc(x.created_at)}] [${esc(x.level)}] ${esc(x.source)} — ${esc(x.message)}</div>`).join(''):'<div class="empty">暂无日志</div>'}catch(e){toast(e.message)}}
-Promise.all([loadStats(),loadAnalytics(),loadOptions()]);const firstPage=new URLSearchParams(location.search).get('page');if(firstPage&&titles[firstPage])showPage(firstPage);
-</script></body></html>
+        <section class="panel">
+          <div class="panel-head"><h2>最近发生变化的商品</h2><a href="?page=products" class="text-link" data-route>选品雷达 <span aria-hidden="true">→</span></a></div>
+          <div class="table-scroll">
+            <table class="movers-table">
+              <thead><tr><th>商品</th><th>月销量</th><th>月销变化</th><th>累计变化</th><th>价格变化</th><th>采集时间</th></tr></thead>
+              <tbody id="mover-rows"><tr><td colspan="6" class="empty">正在读取商品变化…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="products" class="page" aria-labelledby="page-title" hidden>
+        <form id="product-filter" class="panel filter-panel" aria-label="商品筛选">
+          <div class="filter-grid product-primary">
+            <div class="field"><label for="q">商品或店铺</label><input id="q" type="search" placeholder="搜索标题或店铺"></div>
+            <div class="field"><label for="platform">平台</label><select id="platform"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div>
+            <div class="field"><label for="category">品类</label><select id="category"><option value="">全部分类</option></select></div>
+            <div class="field"><label for="min-price">最低价格（R$）</label><input id="min-price" type="number" min="0" step="any" value="32" placeholder="不限"></div>
+            <div class="field"><label for="min-sales" id="min-sales-label">最低月销量</label><input id="min-sales" type="number" min="0" value="1000" placeholder="不限"></div>
+          </div>
+          <div class="filter-tools">
+            <button class="btn disclosure" type="button" data-disclosure="product-advanced" aria-controls="product-advanced" aria-expanded="false">更多筛选 <span class="chevron" aria-hidden="true"></span></button>
+            <div class="actions">
+              <button class="btn secondary" type="button" id="clear-product-filters">清空</button>
+              <button class="btn" type="submit">应用筛选</button>
+            </div>
+          </div>
+          <div id="product-advanced" class="filter-advanced" hidden>
+            <div class="filter-grid advanced-grid">
+              <div class="field"><label for="max-price">最高价格（R$）</label><input id="max-price" type="number" min="0" step="any" placeholder="不限"></div>
+              <div class="field"><label for="sales-metric">销量口径</label><select id="sales-metric"><option value="monthly">月销量</option><option value="historical">累计销量</option></select></div>
+              <div class="field"><label for="max-sales">最高销量</label><input id="max-sales" type="number" min="0" placeholder="不限"></div>
+              <div class="field"><label for="sales-quality">销量可信度</label><select id="sales-quality"><option value="">全部</option><option value="exact">只看精确值</option><option value="estimated">只看估算档位</option></select></div>
+              <div class="field"><label for="min-growth">本次最低增长</label><input id="min-growth" type="number" placeholder="如 100"></div>
+              <div class="field"><label for="min-rating">最低评分</label><input id="min-rating" type="number" min="0" max="5" step="any" placeholder="如 4.5"></div>
+              <div class="field"><label for="min-reviews">最低评论数</label><input id="min-reviews" type="number" min="0" placeholder="如 100"></div>
+              <div class="field"><label for="location">店铺所在地</label><select id="location"><option value="">全部地区</option></select></div>
+              <fieldset class="field year-field">
+                <legend>上架年份（可多选）</legend>
+                <div class="year-picks">
+                  <label><input class="product-year" type="checkbox" value="2024" checked>2024</label>
+                  <label><input class="product-year" type="checkbox" value="2025" checked>2025</label>
+                  <label><input class="product-year" type="checkbox" value="2026" checked>2026</label>
+                </div>
+              </fieldset>
+              <div class="field"><label for="favorite">收藏</label><select id="favorite"><option value="">全部商品</option><option value="1">只看收藏</option></select></div>
+              <div class="field"><label for="image-state">商品图片</label><select id="image-state"><option value="">全部商品</option><option value="with">只看有图</option><option value="missing">只看缺图</option></select></div>
+            </div>
+            <p class="filter-note">公开销量为「1千+」等档位时，以档位下限标为估算。重复采集后可查看变化。</p>
+          </div>
+        </form>
+
+        <section class="results" aria-labelledby="product-results-title">
+          <div class="results-toolbar">
+            <div class="results-heading">
+              <h2 id="product-results-title">商品列表</h2><span class="count" id="product-total" role="status">正在读取…</span>
+            </div>
+            <div class="actions">
+              <label class="inline-control" for="sort-by">排序
+                <select id="sort-by">
+                  <option value="monthly_sold">月销量</option><option value="historical_sold">累计销量</option>
+                  <option value="growth">本次销量变化</option><option value="opportunity">选品参考分</option>
+                  <option value="newest">最新上架</option><option value="rating">评分</option><option value="reviews">评论数</option>
+                  <option value="price">价格</option><option value="updated">最近采集</option>
+                </select>
+              </label>
+              <div class="segmented" role="group" aria-label="商品展示方式">
+                <button type="button" data-view="cards" aria-pressed="true"><span aria-hidden="true">▦</span> 卡片</button>
+                <button type="button" data-view="table" aria-pressed="false"><span aria-hidden="true">☰</span> 表格</button>
+              </div>
+            </div>
+          </div>
+          <div id="product-empty" class="panel empty">正在读取商品…</div>
+          <div id="product-cards" class="product-grid" hidden></div>
+          <div id="product-table" class="panel table-scroll" hidden>
+            <table class="products-table">
+              <thead><tr><th>商品</th><th>品类 / 上架</th><th>价格</th><th>月销量</th><th>累计销量</th><th>本次变化</th><th>参考分</th><th>评分 / 评论</th><th>操作</th></tr></thead>
+              <tbody id="product-rows"></tbody>
+            </table>
+          </div>
+          <nav class="pager" aria-label="商品分页" id="product-pager" hidden>
+            <span class="muted small" id="product-range"></span>
+            <div class="actions"><button class="btn secondary" type="button" id="product-prev">上一页</button><span id="product-page" class="muted small"></span><button class="btn secondary" type="button" id="product-next">下一页</button></div>
+          </nav>
+        </section>
+      </section>
+
+      <section id="reviews" class="page" aria-labelledby="page-title" hidden>
+        <section id="review-product" class="panel review-product" aria-label="当前商品" hidden></section>
+
+        <form id="review-filter" class="panel filter-panel" aria-label="评论筛选">
+          <div class="filter-grid review-primary">
+            <div class="field"><label for="review-q">评论原文</label><input id="review-q" type="search" placeholder="葡萄牙语关键词"></div>
+            <div class="field" id="review-platform-field"><label for="review-platform">平台</label><select id="review-platform"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div>
+            <div class="field"><label for="review-sentiment">情绪（按星级）</label><select id="review-sentiment"><option value="">全部情绪</option><option value="positive">正向 · 4–5 星</option><option value="neutral">中性 · 3 星</option><option value="negative">负向 · 1–2 星</option></select></div>
+            <div class="field"><label for="review-topic">评论主题</label><select id="review-topic"><option value="">全部主题</option><option>物流时效</option><option>质量做工</option><option>包装破损</option><option>尺寸规格</option><option>性价比</option><option>商品一致</option></select></div>
+            <div class="field"><label for="review-media">图片 / 视频</label><select id="review-media"><option value="">不限</option><option value="1">有图片或视频</option><option value="0">无图片和视频</option></select></div>
+          </div>
+          <div class="filter-tools">
+            <button class="btn disclosure" type="button" data-disclosure="review-advanced" aria-controls="review-advanced" aria-expanded="false">更多筛选 <span class="chevron" aria-hidden="true"></span></button>
+            <div class="actions">
+              <button class="btn secondary" id="clear-review-filters" type="button">清空</button>
+              <button class="btn" type="submit">应用筛选</button>
+            </div>
+          </div>
+          <div class="filter-advanced" id="review-advanced" hidden>
+            <div class="filter-grid advanced-grid">
+              <div class="field"><label for="review-year-from">起始年份</label><input id="review-year-from" type="number" min="1" max="9999" placeholder="不限"></div>
+              <div class="field"><label for="review-year-to">结束年份</label><input id="review-year-to" type="number" min="1" max="9999" placeholder="不限"></div>
+              <div class="field" id="review-item-field"><label for="review-item">平台商品 ID</label><input id="review-item" placeholder="输入商品 ID"></div>
+            </div>
+          </div>
+        </form>
+
+        <div class="review-overview">
+          <section class="panel">
+            <div class="panel-head"><h2>评分分布</h2><span class="muted small">当前筛选</span></div>
+            <div class="panel-body" id="review-rating"><p class="empty">正在读取评分…</p></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>评论主题</h2><span class="muted small">按葡语关键词归类</span></div>
+            <div class="panel-body" id="review-insights"><p class="empty">正在读取评论主题…</p></div>
+          </section>
+        </div>
+
+        <section class="panel" aria-labelledby="review-list-title">
+          <div class="panel-head"><div class="results-heading"><h2 id="review-list-title">评论原文</h2><span class="count" id="review-total" role="status">正在读取…</span></div></div>
+          <div id="review-rows"><p class="empty">正在读取评论…</p></div>
+          <nav class="pager" aria-label="评论分页" id="review-pager" hidden>
+            <span class="muted small" id="review-range"></span>
+            <div class="actions"><button class="btn secondary" type="button" id="review-prev">上一页</button><span id="review-page" class="muted small"></span><button class="btn secondary" type="button" id="review-next">下一页</button></div>
+          </nav>
+        </section>
+      </section>
+
+      <section id="tasks" class="page" aria-labelledby="page-title" hidden>
+        <div class="panel">
+          <div class="panel-head"><h2>任务计划</h2><button class="btn" id="new-task" type="button">＋ 新建任务</button></div>
+          <p class="panel-note">任务中心用于保存采集计划，执行采集可从 Chrome 助手发起。</p>
+          <div class="table-scroll">
+            <table class="tasks-table">
+              <thead><tr><th>名称</th><th>平台</th><th>类型</th><th>运行方式</th><th>状态</th><th>创建时间</th></tr></thead>
+              <tbody id="task-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="sources" class="page" aria-labelledby="page-title" hidden>
+        <div class="source-grid">
+          <section class="panel service-card">
+            <span class="platform-tag shopee">Shopee</span><h2>Shopee 巴西</h2>
+            <p>采集分类、搜索列表、商品详情和已加载的评论。可自动翻商品列表并补齐历史缩略图。</p>
+            <a class="text-link" href="https://shopee.com.br/" target="_blank" rel="noreferrer">打开 Shopee <span aria-hidden="true">↗</span></a>
+          </section>
+          <section class="panel service-card">
+            <span class="platform-tag shein">SHEIN</span><h2>SHEIN 巴西</h2>
+            <p>采集商品卡片和已加载的评论。商品列表支持滚动和分页。</p>
+            <a class="text-link" href="https://br.shein.com/" target="_blank" rel="noreferrer">打开 SHEIN <span aria-hidden="true">↗</span></a>
+          </section>
+          <section class="panel service-card">
+            <span class="pill">规划中</span><h2>Mercado Livre</h2>
+            <p>计划接入官方 API。</p>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-head"><h2>采集状态</h2></div>
+          <div class="panel-body" id="capture-status">正在读取…</div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>连接 Chrome 助手</h2></div>
+          <ol class="panel-body setup-list">
+            <li>在 <code>chrome://extensions</code> 开启开发者模式，加载安装目录中的 <code>chrome_extension</code> 文件夹。</li>
+            <li>打开或刷新 Shopee 或 SHEIN 商品列表。确认助手显示「本地平台运行中」。</li>
+            <li>在 Shopee 点击「自动翻页采集」，或在 SHEIN 点击「一键采集当前商品列表」。</li>
+          </ol>
+        </section>
+      </section>
+
+      <section id="import" class="page" aria-labelledby="page-title" hidden>
+        <div class="panel">
+          <div class="panel-head"><h2>导入商品或评论</h2></div>
+          <div class="panel-body">
+            <div class="upload">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <p>支持 Shopee 和 SHEIN 的商品列表、详情和评论 JSON。</p>
+              <label class="btn file-button">选择 JSON 文件<input id="json-file" type="file" accept=".json,.txt"></label>
+              <p id="import-state" class="muted" role="status" hidden></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="exports" class="page" aria-labelledby="page-title" hidden>
+        <div class="export-grid">
+          <div class="panel service-card">
+            <h2>商品数据</h2><p>包含图片链接、价格、销量变化、收藏与备注。</p>
+            <div class="actions"><a class="btn" href="/api/export/products.xlsx">下载 Excel</a><a class="btn secondary" href="/api/export/products.csv">下载 CSV</a></div>
+          </div>
+          <div class="panel service-card">
+            <h2>评论数据</h2><p>包含商品 ID、星级、评论原文、规格和媒体数量。</p>
+            <div class="actions"><a class="btn" href="/api/export/reviews.xlsx">下载 Excel</a><a class="btn secondary" href="/api/export/reviews.csv">下载 CSV</a></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="logs" class="page" aria-labelledby="page-title" hidden>
+        <div class="panel">
+          <div class="panel-head"><h2>最近运行日志</h2></div>
+          <div id="log-rows"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="product-editor" class="editor" aria-labelledby="editor-title">
+    <form id="product-editor-form">
+      <h2 id="editor-title"></h2>
+      <p class="muted editor-product" id="editor-product"></p>
+      <div class="field" id="edit-category-field"><label for="edit-category">品类</label><select id="edit-category"></select></div>
+      <div class="field" id="edit-note-field"><label for="edit-note">选品备注</label><textarea id="edit-note" rows="5" maxlength="2000" placeholder="记录成本、供应商或待核实事项"></textarea></div>
+      <p class="form-error" id="editor-error" role="alert" hidden></p>
+      <div class="actions editor-actions">
+        <button class="btn secondary" type="button" id="reset-category">恢复自动分类</button>
+        <button class="btn secondary" type="button" data-close="product-editor">取消</button>
+        <button class="btn" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="task-modal" class="editor" aria-labelledby="task-title">
+    <form id="task-form" class="task-form">
+      <h2 id="task-title">新建采集任务</h2>
+      <div class="field"><label for="task-name">任务名称</label><input id="task-name" placeholder="如 五金商品追踪" required></div>
+      <div class="field"><label for="task-platform">平台</label><select id="task-platform"><option value="shopee">Shopee 巴西</option><option value="shein">SHEIN 巴西</option><option value="mercadolivre">Mercado Livre（规划中）</option></select></div>
+      <div class="field"><label for="task-type">任务类型</label><select id="task-type"><option>商品采集</option><option>评论采集</option><option>价格与销量追踪</option></select></div>
+      <div class="field"><label for="task-schedule">运行方式</label><select id="task-schedule"><option>手动</option><option>每天 02:00（仅保存计划）</option></select></div>
+      <p class="form-error" id="task-error" role="alert" hidden></p>
+      <div class="actions editor-actions">
+        <button class="btn secondary" type="button" data-close="task-modal">取消</button>
+        <button class="btn" type="submit">保存任务</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

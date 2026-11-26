@@ -122,6 +122,7 @@ def initialize() -> None:
             CREATE INDEX IF NOT EXISTS idx_products_monthly
                 ON products(monthly_sold, rating, review_count);
             CREATE INDEX IF NOT EXISTS idx_reviews_date ON reviews(review_time);
+            CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(platform, shop_id, item_id, review_time);
             CREATE INDEX IF NOT EXISTS idx_capture_events_date ON capture_events(captured_at);
             """
         )

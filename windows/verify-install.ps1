@@ -53,8 +53,17 @@ try {
     $service = Start-Process -FilePath $desktopShortcut -PassThru
     $system = Wait-For-Service
     if ($system.database -ne $database) { throw "Unexpected database path $($system.database), expected $database." }
+    if ($system.version -ne $expectedManifest.version) { throw "Unexpected app version $($system.version)." }
     $dashboardResponse = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
-    if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*LatAm*') { throw 'The radar page is missing.' }
+    if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*/static/app.js*') {
+        throw 'The updated radar page is missing.'
+    }
+    foreach ($asset in @('app.css', 'app.js')) {
+        $response = Invoke-WebRequest -Uri "$url/static/$asset" -UseBasicParsing -TimeoutSec 5
+        if ($response.StatusCode -ne 200 -or $response.RawContentLength -lt 100) {
+            throw "The installed app could not serve $asset."
+        }
+    }
     $other = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
     if (-not $other.WaitForExit(20000) -or $other.ExitCode -ne 0) {
         if (-not $other.HasExited) { Stop-Process -Id $other.Id }

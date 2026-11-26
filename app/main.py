@@ -15,12 +15,13 @@ import webbrowser
 from datetime import datetime, timezone
 from http.client import HTTPConnection, HTTPException as HTTPClientError
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 
 from .categories import CATEGORY_GROUPS, CATEGORY_ORIGIN_RANK, CATEGORIES, classify_stored_product
@@ -31,6 +32,7 @@ from .parser import detect_platform, parse_products, parse_reviews
 PLATFORM_HOST = "127.0.0.1"
 PLATFORM_PORT = 8765
 PLATFORM_URL = f"http://{PLATFORM_HOST}:{PLATFORM_PORT}"
+APP_VERSION = "0.7.0"
 
 
 def resource_path(relative: str) -> Path:
@@ -87,6 +89,7 @@ def backfill_shopee_images() -> int:
 
 
 app = FastAPI(title="LatAm Collector", docs_url=None, redoc_url=None)
+app.mount("/static", StaticFiles(directory=resource_path("static")), name="static")
 
 
 @app.on_event("startup")
@@ -325,6 +328,19 @@ def product_options(platform: str = ""):
     }
 
 
+@app.get("/api/products/{product_id}")
+def product_detail(product_id: int):
+    with connect() as db:
+        row = db.execute(
+            """SELECT id, platform, item_id, shop_id, title, category, shop_name, image_url, product_url
+               FROM products WHERE id=?""",
+            (product_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "商品不存在")
+    return dict(row)
+
+
 @app.patch("/api/products/{product_id}")
 async def update_product(product_id: int, request: Request):
     body = await request.json()
@@ -375,6 +391,8 @@ REVIEW_TOPICS = {
 
 
 def review_sentiment(rating: int) -> str:
+    if not 1 <= rating <= 5:
+        return "未评分"
     if rating >= 4:
         return "正向"
     if rating == 3:
@@ -393,8 +411,7 @@ def enrich_review(item: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-@app.get("/api/reviews")
-def reviews(
+def review_query(
     platform: str = "",
     year_from: int = 2025,
     year_to: int = 2026,
@@ -405,13 +422,20 @@ def reviews(
     has_media: str = "",
     sentiment: str = "",
     topic: str = "",
-    page: int = 1,
-    page_size: int = 50,
-):
-    page_size = min(max(page_size, 1), 200)
-    page = max(page, 1)
-    where = ["CAST(substr(r.review_time,1,4) AS INTEGER) BETWEEN ? AND ?", "r.rating BETWEEN ? AND ?"]
-    values: list[Any] = [year_from, year_to, min_rating, max_rating]
+    product_id: int | None = None,
+    all_years: bool = False,
+) -> tuple[str, list[Any]]:
+    where = ["r.rating BETWEEN ? AND ?"]
+    values: list[Any] = [min_rating, max_rating]
+    if not all_years:
+        where.append("CAST(substr(r.review_time,1,4) AS INTEGER) BETWEEN ? AND ?")
+        values.extend((year_from, year_to))
+    if product_id is not None:
+        where.append(
+            """(r.platform, r.shop_id, r.item_id) =
+               (SELECT platform, shop_id, item_id FROM products WHERE id=?)"""
+        )
+        values.append(product_id)
     if platform:
         where.append("r.platform = ?")
         values.append(platform)
@@ -430,35 +454,44 @@ def reviews(
     elif sentiment == "neutral":
         where.append("r.rating = 3")
     elif sentiment == "negative":
-        where.append("r.rating <= 2")
+        where.append("r.rating BETWEEN 1 AND 2")
     if topic in REVIEW_TOPICS:
         topic_parts = []
         for word in REVIEW_TOPICS[topic]:
             topic_parts.append("LOWER(r.comment) LIKE ?")
             values.append("%" + word + "%")
         where.append("(" + " OR ".join(topic_parts) + ")")
-    clause = " AND ".join(where)
+    return " AND ".join(where), values
+
+
+@app.get("/api/reviews")
+def reviews(
+    filters: Annotated[tuple[str, list[Any]], Depends(review_query)],
+    page: int = 1,
+    page_size: int = 50,
+):
+    clause, values = filters
+    page_size = min(max(page_size, 1), 200)
+    page = max(page, 1)
     with connect() as db:
+        db.execute("BEGIN")
         total = db.execute("SELECT COUNT(*) FROM reviews r WHERE " + clause, values).fetchone()[0]
+        page = min(page, max(1, (total + page_size - 1) // page_size))
         rows = db.execute(
-            """SELECT r.*, p.title FROM reviews r
+            """SELECT r.*, p.id AS product_id, p.title FROM reviews r
                LEFT JOIN products p ON p.platform=r.platform AND p.item_id=r.item_id AND p.shop_id=r.shop_id
-               WHERE """ + clause + " ORDER BY r.review_time DESC LIMIT ? OFFSET ?",
+               WHERE """ + clause + " ORDER BY r.review_time DESC, r.id DESC LIMIT ? OFFSET ?",
             values + [page_size, (page - 1) * page_size],
         ).fetchall()
     return {"total": total, "page": page, "page_size": page_size, "items": [enrich_review(dict(row)) for row in rows]}
 
 
 @app.get("/api/review-insights")
-def review_insights(year_from: int = 2025, year_to: int = 2026, platform: str = ""):
-    where = "CAST(substr(review_time,1,4) AS INTEGER) BETWEEN ? AND ?"
-    values: list[Any] = [year_from, year_to]
-    if platform:
-        where += " AND platform = ?"
-        values.append(platform)
+def review_insights(filters: Annotated[tuple[str, list[Any]], Depends(review_query)]):
+    where, values = filters
     with connect() as db:
         rows = db.execute(
-            """SELECT rating, comment, media_count FROM reviews
+            """SELECT r.rating, r.comment, r.media_count FROM reviews r
                WHERE """ + where,
             values,
         ).fetchall()
@@ -468,8 +501,8 @@ def review_insights(year_from: int = 2025, year_to: int = 2026, platform: str = 
     with_text = media = 0
     for row in rows:
         rating = int(row["rating"] or 0)
-        sentiments[review_sentiment(rating)] += 1
         if 1 <= rating <= 5:
+            sentiments[review_sentiment(rating)] += 1
             stars[str(rating)] += 1
         comment = row["comment"] or ""
         if comment.strip():
@@ -705,8 +738,8 @@ def analytics():
         quality = dict(db.execute(
             """SELECT
                  SUM(CASE WHEN monthly_sold_estimated=0 AND monthly_sold>0 THEN 1 ELSE 0 END) exact_count,
-                 SUM(CASE WHEN monthly_sold_estimated=1 THEN 1 ELSE 0 END) estimated_count,
-                 SUM(CASE WHEN monthly_sold=0 THEN 1 ELSE 0 END) missing_count
+                 SUM(CASE WHEN monthly_sold_estimated=1 AND monthly_sold>0 THEN 1 ELSE 0 END) estimated_count,
+                 SUM(CASE WHEN monthly_sold<=0 THEN 1 ELSE 0 END) missing_count
                FROM products"""
         ).fetchone())
         movers = [enrich_product(dict(row)) for row in db.execute(
@@ -809,7 +842,7 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.6.1",
+        "version": APP_VERSION,
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
         "features": ["Shopee/SHEIN 列表批量采集", "标准品类与手动改类", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
