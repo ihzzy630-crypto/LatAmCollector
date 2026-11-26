@@ -2,6 +2,11 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified installer to GitHub Releases
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -65,3 +70,33 @@ jobs:
           name: LatAmCollector-Windows
           path: dist/LatAmCollector.exe
           if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: LatAmCollector-Windows-Setup
+          path: dist
+      - name: Publish verified installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          setups=(dist/LatAmCollector-Setup-*-x64.exe)
+          if [[ ${#setups[@]} -ne 1 ]]; then
+            echo 'Expected one verified Windows installer.' >&2
+            exit 1
+          fi
+          version=${setups[0]#dist/LatAmCollector-Setup-}
+          version=${version%-x64.exe}
+          gh release create "windows-v$version" "${setups[0]}" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "LatAmCollector Windows v$version" --notes-file windows/Windows-Guide.txt
