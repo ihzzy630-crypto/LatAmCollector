@@ -1,4 +1,4 @@
-LatAmCollector Chrome Helper v0.5.4
+LatAmCollector Chrome Helper v0.5.5
 
 Install:
 1. Open Chrome and visit chrome://extensions
@@ -14,6 +14,8 @@ Update an existing installation:
 3. The popup has a button to open the Shopee Brazil homepage. Open a category or search result before starting collection.
 
 The popup shows local service and Shopee page status independently. Shopee collection pauses on a page error or a verification prompt. Open a working product list manually before restarting collection.
+
+On a Shopee category page, the Popular view shows how many products from the current page reached the local platform. If saving fails, use the retry button in the popup. For bulk collection, open a Shopee search result or switch the sorting to Mais Recente.
 
 Privacy:
 - Captures only supported public Shopee/SHEIN product and review responses, plus public SHEIN product cards already rendered on the page.

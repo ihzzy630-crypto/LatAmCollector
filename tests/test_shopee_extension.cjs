@@ -12,6 +12,8 @@ const bridge = extensionFile("bridge.js");
 const popup = extensionFile("popup.js");
 const home = "https://shopee.com.br/";
 const listUrl = new URL("/api/v4/search/search_items?keyword=test&limit=1", home).href;
+const categoryUrl = new URL("Papelaria-cat.11059939", home).href;
+const recommendUrl = new URL("/api/v4/recommend/recommend_v2", home).href;
 const pageUnavailable = "Página indisponível\nDesculpe, algo deu errado. Tente novamente.";
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -29,7 +31,16 @@ function products(itemid, total = 2) {
   return response({ error: 0, items: [{ itemid, shopid: 1 }], total_count: total });
 }
 
-function createTab({ url = new URL("search?keyword=test", home).href, text = "", storage = new Map() } = {}) {
+function recommendations() {
+  const item = { item_data: { itemid: 7, shopid: 8 }, item_card_displayed_asset: { name: "Caneta" } };
+  return response({
+    error: null,
+    data: { total: 231, units: [{ item }, { item }, { banner: {} }] }
+  }, { url: recommendUrl });
+}
+
+function createTab({ url = new URL("search?keyword=test", home).href, text = "",
+  storage = new Map(), onCapture = () => undefined } = {}) {
   const document = new EventTarget();
   document.readyState = "complete";
   document.body = { innerText: text };
@@ -64,8 +75,10 @@ function createTab({ url = new URL("search?keyword=test", home).href, text = "",
     document, URL, CustomEvent,
     chrome: { runtime: {
       onMessage: { addListener: (listener) => { receiveMessage = listener; } },
-      sendMessage: (message) => {
-        if (message.type === "LATAM_CAPTURE") captured.push(message.data);
+      async sendMessage(message) {
+        if (message.type !== "LATAM_CAPTURE") return;
+        captured.push(message.data);
+        return onCapture(message.data);
       }
     } }
   });
@@ -79,9 +92,10 @@ function createTab({ url = new URL("search?keyword=test", home).href, text = "",
     url, requests, responses, captured, storage, message,
     status: () => message({ type: "LATAM_GET_SHOPEE_STATUS" }).status,
     start: () => message({ type: "LATAM_BULK_COMMAND", command: { action: "start" } }),
+    saveCategory: () => message({ type: "LATAM_BULK_COMMAND", command: { action: "save_category" } }),
     async loadList(result) {
       responses.push(result);
-      await window.fetch(listUrl);
+      await window.fetch(result.url);
       await tick();
     },
     async runNextTimer() {
@@ -170,9 +184,64 @@ test("A page-owned request returning an access error pauses capture in that tab"
   assert.equal(createTab().status().status, "idle");
 });
 
-test("The popup uses the active tab and the Shopee button opens the official homepage", async () => {
-  const tab = createTab();
-  await tab.loadList(products(1));
+test("Popular shows the current products and retries a failed local save without another Shopee request", async () => {
+  let accept;
+  const tab = createTab({ url: categoryUrl, onCapture: () => accept });
+  let finishSave;
+  accept = new Promise((resolve) => { finishSave = resolve; });
+  await tab.loadList(recommendations());
+  assert.equal(tab.status().mode, "category_page");
+  assert.equal(tab.status().status, "running");
+  assert.equal(tab.status().total, 1);
+  assert.equal(tab.status().captured, 0);
+
+  finishSave({ ok: false });
+  await tick();
+  assert.equal(tab.status().status, "error");
+  accept = { ok: true, result: { products: 1 } };
+  tab.saveCategory();
+  await tick();
+  assert.equal(tab.status().status, "done");
+  assert.equal(tab.status().captured, 1);
+  tab.saveCategory();
+  assert.equal(tab.requests.length, 1);
+  assert.equal(tab.captured.length, 2);
+  assert.deepEqual(tab.captured[0].payload, tab.captured[1].payload);
+});
+
+test("Category detection keeps the search list available and ignores detail-page recommendations", async () => {
+  const detail = createTab({ url: new URL("product/8/7", home).href });
+  await detail.loadList(recommendations());
+  assert.equal(detail.status().status, "idle");
+  assert.equal(detail.captured.length, 1);
+
+  const search = createTab({ url: categoryUrl });
+  await search.loadList(products(1));
+  await search.loadList(recommendations());
+  assert.equal(search.status().mode, undefined);
+  assert.equal(search.status().status, "ready");
+});
+
+test("Popular still pauses on a refusal and waits for an explicit save after reopening", async () => {
+  const tab = createTab({ url: categoryUrl });
+  await tab.loadList(response({}, { url: recommendUrl, status: 403 }));
+  assert.equal(tab.status().status, "blocked");
+  tab.saveCategory();
+  assert.equal(tab.captured.length, 0);
+
+  const reloaded = createTab({
+    url: categoryUrl, storage: tab.storage, onCapture: () => ({ ok: true, result: { products: 1 } })
+  });
+  await reloaded.loadList(recommendations());
+  assert.equal(reloaded.status().status, "ready");
+  assert.equal(reloaded.captured.length, 0);
+  reloaded.saveCategory();
+  await tick();
+  assert.equal(reloaded.status().status, "done");
+  assert.equal(reloaded.requests.length, 1);
+});
+
+async function createPopup(tab) {
   const elements = new Map();
   const opened = [];
   const document = {
@@ -203,9 +272,37 @@ test("The popup uses the active tab and the Shopee button opens the official hom
     setTimeout() {}
   });
   await tick();
+  return { elements, opened };
+}
+
+test("The popup uses the active tab and the Shopee button opens the official homepage", async () => {
+  const tab = createTab();
+  await tab.loadList(products(1));
+  const { elements, opened } = await createPopup(tab);
   assert.equal(elements.get("platform").textContent, "运行中");
   assert.equal(elements.get("page").textContent, "已连接");
   assert.equal(elements.get("bulk-start").disabled, false);
   elements.get("shopee-home").click();
   assert.deepEqual(opened, [home]);
 });
+
+test("The popup reports a saved Popular list without offering an unrelated bulk action", async () => {
+  const tab = createTab({ url: categoryUrl, onCapture: () => ({ ok: true, result: { products: 1 } }) });
+  await tab.loadList(recommendations());
+  const { elements } = await createPopup(tab);
+  assert.equal(elements.get("page").textContent, "已识别分类列表");
+  assert.equal(elements.get("bulk-state").textContent, "本页 1 件商品已入库");
+  assert.equal(elements.get("bulk-start").textContent, "本页已入库");
+  assert.equal(elements.get("bulk-limit").hidden, true);
+});
+
+if (process.env.LATAM_SHOPEE_POPULAR_FIXTURE) {
+  test("Recognizes the previously saved Shopee Popular response", async () => {
+    const payload = JSON.parse(readFileSync(process.env.LATAM_SHOPEE_POPULAR_FIXTURE, "utf8"));
+    const tab = createTab({ url: categoryUrl, onCapture: () => ({ ok: true, result: { products: 60 } }) });
+    await tab.loadList(response(payload, { url: recommendUrl }));
+    assert.equal(tab.status().total, 60);
+    assert.equal(tab.status().captured, 60);
+    assert.equal(tab.status().status, "done");
+  });
+}

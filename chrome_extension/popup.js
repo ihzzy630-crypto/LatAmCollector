@@ -20,10 +20,18 @@ function renderBulk(status) {
   const bar = document.getElementById("bulk-bar");
   const start = document.getElementById("bulk-start");
   const stop = document.getElementById("bulk-stop");
+  const categoryPage = status?.mode === "category_page";
+  document.getElementById("bulk-title").textContent = categoryPage ? "当前分类商品" : "一键采集当前商品列表";
+  document.getElementById("bulk-limit").hidden = categoryPage;
+  document.getElementById("bulk-actions").style.gridTemplateColumns = categoryPage ? "1fr" : "";
+  document.getElementById("bulk-help").textContent = categoryPage
+    ? "分类页会收集正常浏览时加载的商品。想批量采集，可以切到「Mais Recente」或搜索商品。"
+    : "Shopee 出现页面错误或验证时会暂停。手动打开正常商品列表后，可再开始采集。";
+  stop.hidden = categoryPage;
   const captured = Number(status?.captured || 0);
   const total = Number(status?.total || 0);
   const maxItems = Number(status?.maxItems || document.getElementById("bulk-max").value || 3000);
-  const target = total ? Math.min(total, maxItems) : maxItems;
+  const target = categoryPage ? total : total ? Math.min(total, maxItems) : maxItems;
   bar.style.width = Math.min(100, target ? captured / target * 100 : 0) + "%";
 
   const labels = {
@@ -36,7 +44,7 @@ function renderBulk(status) {
     error: status?.message || "批量采集发生错误"
   };
   const current = status?.status || "idle";
-  state.textContent = labels[current] || status?.message || "等待开始";
+  state.textContent = (categoryPage ? status?.message : labels[current]) || status?.message || "等待开始";
   state.className = ["blocked", "error"].includes(current) ? "muted bad" : current === "running" ? "muted blue" : "muted";
   const running = current === "running";
   const resumable = ["stopped", "error"].includes(current) && Number(status?.nextOffset || 0) > 0;
@@ -44,8 +52,13 @@ function renderBulk(status) {
   if (current === "blocked") start.textContent = "等待页面恢复";
   else if (resumable) start.textContent = "继续采集";
   else if (current === "done") start.textContent = "重新采集";
+  if (categoryPage) {
+    const categoryLabels = { ready: "保存本页商品", running: "正在入库", done: "本页已入库", error: "重试保存本页" };
+    start.textContent = categoryLabels[current];
+  }
   const awaitingShopeeList = activePlatform === "shopee" && current === "idle";
-  start.disabled = running || current === "blocked" || awaitingShopeeList || !platformReady || !pageReady;
+  start.disabled = running || current === "blocked" || awaitingShopeeList ||
+    (categoryPage && current === "done") || !platformReady || !pageReady;
   stop.disabled = !running || !pageReady;
 }
 
@@ -110,6 +123,7 @@ async function refresh() {
     if (!shopeeStatus) pageMessage = "请重开或刷新当前标签页";
     else if (shopeeStatus.status === "blocked") pageMessage = "采集已暂停";
     else if (shopeeStatus.status === "idle") pageMessage = "等待商品列表";
+    else if (shopeeStatus.mode === "category_page") pageMessage = "已识别分类列表";
     else pageMessage = "已连接";
   }
   setStatus("page", pageMessage, pageReady && shopeeStatus?.status !== "blocked");
@@ -137,7 +151,9 @@ async function sendBulkCommand(action) {
     document.getElementById("bulk-state").textContent = "请先打开 Shopee 或 SHEIN 商品列表页";
     return;
   }
-  if (action === "start" && (bulkSnapshot.status === "blocked" || bulkSnapshot.status === "running")) return;
+  const categoryPage = bulkSnapshot.mode === "category_page";
+  if (action === "start" && (["blocked", "running"].includes(bulkSnapshot.status) ||
+      (categoryPage && bulkSnapshot.status === "done"))) return;
   if (action === "start" && !platformReady) {
     document.getElementById("bulk-state").textContent = "本地平台未连接，请打开桌面快捷方式";
     return;
@@ -145,13 +161,13 @@ async function sendBulkCommand(action) {
   const input = document.getElementById("bulk-max");
   const maxItems = Math.min(6000, Math.max(20, Number(input.value) || 3000));
   input.value = maxItems;
-  await chrome.storage.local.set({ bulkMaxItems: maxItems });
+  if (!categoryPage) await chrome.storage.local.set({ bulkMaxItems: maxItems });
   const resume = action === "start" && ["stopped", "error"].includes(bulkSnapshot.status) && Number(bulkSnapshot.nextOffset || 0) > 0;
   try {
     await chrome.tabs.sendMessage(activeTab.id, {
       type: "LATAM_BULK_COMMAND",
       command: {
-        action,
+        action: categoryPage && action === "start" ? "save_category" : action,
         maxItems,
         resume,
         startOffset: resume ? Number(bulkSnapshot.nextOffset || 0) : 0,
@@ -159,7 +175,8 @@ async function sendBulkCommand(action) {
         sourceKey: resume ? bulkSnapshot.sourceKey : ""
       }
     });
-    document.getElementById("bulk-state").textContent = action === "stop" ? "正在暂停…" : "命令已发送，正在准备…";
+    document.getElementById("bulk-state").textContent = action === "stop"
+      ? "正在暂停…" : categoryPage ? "正在保存本页…" : "命令已发送，正在准备…";
   } catch (_) {
     document.getElementById("bulk-state").textContent = "请刷新当前商品列表页面后再试一次";
     document.getElementById("bulk-state").className = "muted bad";

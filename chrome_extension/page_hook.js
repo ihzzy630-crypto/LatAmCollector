@@ -4,6 +4,7 @@
   window.__LATAM_COLLECTOR_HOOKED__ = true;
 
   const EVENT_NAME = "LATAM_COLLECTOR_CAPTURE_V1";
+  const CAPTURE_RESULT_EVENT = "LATAM_COLLECTOR_CAPTURE_RESULT_V1";
   const BULK_COMMAND_EVENT = "LATAM_COLLECTOR_BULK_COMMAND_V1";
   const BULK_STATUS_EVENT = "LATAM_COLLECTOR_BULK_STATUS_V1";
   const SHOPEE_MARKERS = ["search_items", "recommend_v2", "get_ratings", "item/get", "pdp/get_pc"];
@@ -30,7 +31,10 @@
   const SHOPEE_STOP_KEY = "LATAM_COLLECTOR_SHOPEE_STOP_V1";
   const SHEIN_JOB_KEY = "LATAM_COLLECTOR_SHEIN_BULK_V1";
   let lastSearchUrl = "";
+  let lastSearchPage = "";
   let lastSearchTotal = 0;
+  let shopeeCategory = null;
+  let shopeeCaptureId = 0;
   let shopeeBlocked = false;
   let shopeeCheckpoint = null;
   let shopeeController = null;
@@ -66,6 +70,20 @@
 
   function isShopeeSearchUrl(url) {
     return platformFromUrl(url) === "shopee" && String(url).toLowerCase().includes("search_items");
+  }
+
+  function currentPage() {
+    return location.href.split("#", 1)[0];
+  }
+
+  function hasShopeeSearch() {
+    return Boolean(lastSearchUrl && lastSearchPage === currentPage());
+  }
+
+  function isShopeeCategoryPage() {
+    if (/-cat\.\d+(?:\.\d+)*\/?$/i.test(location.pathname) || /^\/category\/[^/]+/i.test(location.pathname)) return true;
+    const text = String(document.body?.innerText || "").slice(0, 16000).toLowerCase();
+    return text.includes("todas as categorias") && text.includes("classificar por");
   }
 
   function shopeePageIssue(text, path = "") {
@@ -227,6 +245,7 @@
     const nextKey = searchKey(url);
     if (previousKey && previousKey !== nextKey) lastSearchTotal = 0;
     lastSearchUrl = String(url);
+    lastSearchPage = currentPage();
     lastSearchTotal = totalCount(payload) || lastSearchTotal;
     if (!bulkRunning) {
       const progress = shopeeCheckpoint || (bulkProgress.status === "stopped" ? bulkProgress : null);
@@ -242,19 +261,90 @@
     }
   }
 
-  function publish(url, payload) {
+  function sendCapture(url, payload, captureId) {
+    document.dispatchEvent(new CustomEvent(EVENT_NAME, {
+      detail: JSON.stringify({
+        source_url: String(url), captured_at: new Date().toISOString(), payload, capture_id: captureId
+      })
+    }));
+  }
+
+  function saveShopeeCategory(category) {
+    if (!category || shopeeBlocked || category.status === "running" || category.status === "done") return;
+    category.captureId = ++shopeeCaptureId;
+    category.status = "running";
+    sendCapture(category.url, category.payload, category.captureId);
+  }
+
+  function rememberShopeeCategory(url, payload) {
+    if (bulkRunning || !/\/recommend_v2\/?$/i.test(new URL(url, location.href).pathname) || !isShopeeCategoryPage()) return false;
+    if ((payload.error && payload.error !== "0") || !Array.isArray(payload.data?.units)) return false;
+    const products = new Set();
+    for (const unit of payload.data.units) {
+      const item = unit?.item;
+      const data = item?.item_data || item?.item_basic || item;
+      const shopId = data?.shopid ?? data?.shop_id ?? item?.shopid;
+      const itemId = data?.itemid ?? data?.item_id ?? item?.itemid;
+      if (shopId && itemId) products.add(`${shopId}:${itemId}`);
+    }
+    if (!products.size) return false;
+    shopeeCategory = {
+      pageUrl: currentPage(), url, payload, count: products.size, saved: 0, status: "ready"
+    };
+    if (!shopeeCheckpoint) saveShopeeCategory(shopeeCategory);
+    return true;
+  }
+
+  function currentShopeeCategory() {
+    return !hasShopeeSearch() && shopeeCategory?.pageUrl === currentPage() ? shopeeCategory : null;
+  }
+
+  function shopeeStatusForTab() {
+    if (shopeeBlocked || bulkRunning) return bulkProgress;
+    const category = currentShopeeCategory();
+    if (!category) {
+      if (lastSearchUrl && !hasShopeeSearch() && !shopeeCheckpoint) {
+        return { platform: "shopee", status: "idle", message: "等待当前页的商品列表" };
+      }
+      return bulkProgress;
+    }
+    const messages = {
+      ready: `已识别本页 ${category.count} 件商品，可以保存到选品雷达`,
+      running: `已识别本页 ${category.count} 件商品，正在入库`,
+      done: `本页 ${category.saved} 件商品已入库`,
+      error: `已识别本页 ${category.count} 件商品，入库未成功，可重试保存`
+    };
+    return {
+      platform: "shopee", mode: "category_page", status: category.status,
+      captured: category.saved, total: category.count, message: messages[category.status]
+    };
+  }
+
+  document.addEventListener(CAPTURE_RESULT_EVENT, (event) => {
+    try {
+      const { captureId, products } = JSON.parse(event.detail || "{}");
+      const category = shopeeCategory;
+      if (!category || shopeeBlocked || category.captureId !== captureId || category.status !== "running") return;
+      category.saved = Number.isInteger(products) && products > 0 ? products : 0;
+      category.status = category.saved ? "done" : "error";
+      if (category.saved) category.payload = null;
+    } catch (_) {}
+  });
+
+  function publish(url, payload, page = currentPage()) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
     const isShopee = platformFromUrl(location.href) === "shopee" && platformFromUrl(url) === "shopee";
     if (isShopee) {
       const issue = currentShopeeIssue() || shopeeListIssue(url, payload);
       if (issue) stopShopee(issue);
       if (shopeeBlocked) return;
+      if (page === currentPage()) {
+        rememberSearch(url, payload);
+        if (rememberShopeeCategory(url, payload)) return;
+      }
+      if (shopeeCheckpoint) return;
     }
-    rememberSearch(url, payload);
-    if (isShopee && shopeeCheckpoint) return;
-    document.dispatchEvent(new CustomEvent(EVENT_NAME, {
-      detail: JSON.stringify({ source_url: String(url), captured_at: new Date().toISOString(), payload })
-    }));
+    sendCapture(url, payload);
   }
 
   function delay(milliseconds) {
@@ -383,8 +473,9 @@
   async function runShopeeBulk(command) {
     const pageIssue = currentShopeeIssue();
     if (pageIssue) stopShopee(pageIssue);
-    if (shopeeBlocked || (shopeeCheckpoint && !lastSearchUrl)) return;
-    if (!lastSearchUrl) {
+    if (shopeeBlocked) return;
+    if (!hasShopeeSearch()) {
+      if (shopeeCheckpoint) return;
       emitBulkStatus("idle", { platform: "shopee", message: "请先打开 Shopee 分类页或搜索结果页" });
       return;
     }
@@ -665,7 +756,12 @@
           const issue = currentShopeeIssue();
           if (issue) stopShopee(issue);
         }
-        dispatchBulkStatus({ ...bulkProgress, snapshot: true });
+        const status = platformFromUrl(location.href) === "shopee" ? shopeeStatusForTab() : bulkProgress;
+        dispatchBulkStatus({ ...status, snapshot: true });
+      } else if (command.action === "save_category" && platformFromUrl(location.href) === "shopee") {
+        const issue = currentShopeeIssue();
+        if (issue) stopShopee(issue);
+        if (!bulkRunning) saveShopeeCategory(currentShopeeCategory());
       } else if (command.action === "stop") {
         if (shopeeBlocked || shopeeCheckpoint) return;
         bulkRunning = false;
@@ -685,7 +781,7 @@
     }
   });
 
-  async function inspectFetchResponse(response, requestUrl) {
+  async function inspectFetchResponse(response, requestUrl, page) {
     const responseIssue = shopeeResponseIssue(requestUrl, response.url, response.status);
     if (responseIssue) return stopShopee(responseIssue);
     const onShopee = platformFromUrl(location.href) === "shopee" && platformFromUrl(response.url) === "shopee";
@@ -697,7 +793,7 @@
         const issue = shopeePageIssue(text);
         if (issue) return stopShopee(issue);
       }
-      publish(response.url, JSON.parse(text));
+      publish(response.url, JSON.parse(text), page);
     } catch (_) {
       // The page must never be interrupted when a response is unreadable.
     }
@@ -705,8 +801,9 @@
 
   const originalFetch = window.fetch;
   window.fetch = function (...args) {
+    const page = currentPage();
     const pending = originalFetch.apply(this, args);
-    pending.then((response) => inspectFetchResponse(response, args[0]?.url || args[0])).catch(() => {});
+    pending.then((response) => inspectFetchResponse(response, args[0]?.url || args[0], page)).catch(() => {});
     return pending;
   };
 
@@ -718,6 +815,7 @@
   };
   XMLHttpRequest.prototype.send = function (...args) {
     if (isSupportedUrl(this.__latamCollectorUrl)) {
+      const page = currentPage();
       this.addEventListener("load", () => {
         try {
           const finalUrl = this.responseURL || this.__latamCollectorUrl;
@@ -733,7 +831,7 @@
             if (bodyIssue) return stopShopee(bodyIssue);
             payload = JSON.parse(this.responseText);
           }
-          publish(finalUrl, payload);
+          publish(finalUrl, payload, page);
         } catch (_) {
           // Ignore unsupported or non-JSON responses.
         }

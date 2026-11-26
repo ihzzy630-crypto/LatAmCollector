@@ -1,12 +1,29 @@
 (() => {
   "use strict";
   const EVENT_NAME = "LATAM_COLLECTOR_CAPTURE_V1";
+  const CAPTURE_RESULT_EVENT = "LATAM_COLLECTOR_CAPTURE_RESULT_V1";
   const BULK_COMMAND_EVENT = "LATAM_COLLECTOR_BULK_COMMAND_V1";
   const BULK_STATUS_EVENT = "LATAM_COLLECTOR_BULK_STATUS_V1";
   let pageStatus = null;
 
   function dispatchCommand(command) {
     document.dispatchEvent(new CustomEvent(BULK_COMMAND_EVENT, { detail: JSON.stringify(command) }));
+  }
+
+  async function forwardCapture(data) {
+    const { capture_id: captureId, ...capture } = data;
+    let products = 0;
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "LATAM_CAPTURE", data: capture });
+      if (response?.ok) products = Number(response.result?.products) || 0;
+    } catch (_) {
+      // A reloaded extension or unavailable local service might not respond.
+    }
+    if (Number.isSafeInteger(captureId)) {
+      document.dispatchEvent(new CustomEvent(CAPTURE_RESULT_EVENT, {
+        detail: JSON.stringify({ captureId, products })
+      }));
+    }
   }
 
   document.addEventListener(EVENT_NAME, (event) => {
@@ -18,7 +35,7 @@
       const allowed = host === "shopee.com.br" || host.endsWith(".shopee.com.br") ||
         host === "br.shein.com" || host.endsWith(".br.shein.com");
       if (!allowed) return;
-      chrome.runtime.sendMessage({ type: "LATAM_CAPTURE", data });
+      forwardCapture(data);
     } catch (_) {
       // Discard malformed page events.
     }

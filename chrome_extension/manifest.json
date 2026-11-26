@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LatAmCollector Brazil Helper",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Capture public Shopee and SHEIN Brazil product lists, sales and reviews into the local LatAmCollector platform.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
