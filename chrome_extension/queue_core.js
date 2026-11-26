@@ -1,15 +1,23 @@
 (() => {
   "use strict";
   const HOME = "https://shopee.com.br/";
+  const CURRENT_TASK_PREFIX = "latamShopeeCurrent:";
   const BROWSER_HOSTS = new Set(["shopee.com.br", "www.shopee.com.br"]);
   const SORT_KEYS = ["sortBy", "order", "minPrice", "maxPrice"];
+  const PAGINATION = [
+    ".shopee-mini-page-controller", ".shopee-page-controller", ".shopee-pagination",
+    'nav[class*="pagination" i]', 'nav[aria-label*="pagina" i]', 'nav[aria-label*="pág" i]', 'nav[aria-label*="page" i]',
+    '[role="navigation"][aria-label*="pagina" i]', '[data-testid="pagination"]'
+  ].join(",");
+  const PAGE_BUTTON = 'a,button,[role="button"],[role="link"]';
   const NEXT_SELECTORS = [
     'a[rel~="next"]',
     ".shopee-mini-page-controller__next-btn",
     ".shopee-page-controller .shopee-icon-button--right",
-    ':is(.shopee-page-controller,.shopee-mini-page-controller,.shopee-pagination,nav[aria-label*="paginação" i]) [aria-label]'
+    `:is(${PAGINATION}) :is(${PAGE_BUTTON})`
   ].join(",");
-  const STANDARD_NEXT = ".shopee-mini-page-controller__next-btn,.shopee-icon-button--right,a[rel~='next']";
+  const STANDARD_NEXT = ".shopee-mini-page-controller__next-btn,.shopee-icon-button--right,a[rel~='next'],[data-testid='pagination-next']";
+  const NEXT_LABELS = new Set(["proximo", "proxima", "proximo pagina", "proxima pagina", "pagina seguinte", "seguinte", "next", "next page", "›", "❯", "»"]);
 
   function publicShopeeUrl(value, base = HOME) {
     if (typeof value !== "string" || !value.trim()) return null;
@@ -65,6 +73,20 @@
     return listingEntry(url.href);
   }
 
+  function queuedEntry(entry) {
+    return { ...entry, status: "queued", pages: [], saved: 0, added: 0, message: "" };
+  }
+
+  function currentListingTask(tab) {
+    const listing = listingEntry(tab?.url);
+    if (!listing || !Number.isInteger(tab.id)) return null;
+    const entry = queuedEntry({ ...listing, url: tab.url });
+    return {
+      status: "idle", message: "", entries: [entry], currentKey: entry.key,
+      pageLimit: 0, includeChildren: false, needsReview: false, sourceTabId: tab.id
+    };
+  }
+
   function categoryLinks(document, page) {
     if (!publicShopeeUrl(page)) return [];
     const found = new Map();
@@ -102,25 +124,62 @@
     for (const character of [...ids].sort().join("|")) {
       hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
     }
-    return { scope: page.scope, kind: isSearch ? "search" : "recommendation", fingerprint: ids.size + ":" + (hash >>> 0), count: ids.size };
+    const lastPage = isSearch && (payload.nomore === true || payload.data?.nomore === true);
+    return { scope: page.scope, kind: isSearch ? "search" : "recommendation", fingerprint: ids.size + ":" + (hash >>> 0), count: ids.size, lastPage };
   }
 
-  function nextListingControl(document, pageUrl) {
+  function displayed(element) {
+    return element.getClientRects().length > 0 &&
+      !element.closest('[aria-hidden="true"],[hidden],[inert]') &&
+      !["hidden", "collapse"].includes(element.ownerDocument?.defaultView?.getComputedStyle(element).visibility);
+  }
+
+  function disabled(element) {
+    return element.disabled || element.closest('[disabled],[aria-disabled="true"],.disabled,.shopee-icon-button--disabled') ||
+      /(?:^|[-_\s])disabled(?:$|[-_\s])/.test(String(element.className || ""));
+  }
+
+  function staysInListing(control, page, pageUrl) {
+    const href = control.getAttribute("href");
+    return !href || href.startsWith("#") || listingEntry(href, "", pageUrl)?.scope === page.scope;
+  }
+
+  function nextLabel(value) {
+    return cleanLabel(value).normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR");
+  }
+
+  function listingPagination(document, pageUrl) {
     const page = listingEntry(pageUrl);
-    if (!page) return null;
+    if (!page) return { action: "waiting" };
+    let atEnd = false;
+    let hasLaterPage = false;
     for (const control of document.querySelectorAll(NEXT_SELECTORS)) {
-      if (!control.matches('a,button,[role="button"]')) continue;
-      const label = cleanLabel(control.getAttribute("aria-label")).toLocaleLowerCase("pt-BR");
-      if (!control.matches(STANDARD_NEXT) &&
-          !["próximo", "próxima página", "página seguinte", "next", "next page"].includes(label)) continue;
-      if (control.disabled || control.closest('[disabled],[aria-disabled="true"],[aria-hidden="true"],[hidden],.disabled,.shopee-icon-button--disabled') ||
-          /(?:^|[-_\s])disabled(?:$|[-_\s])/.test(String(control.className || "")) ||
-          !control.getClientRects().length || document.defaultView?.getComputedStyle(control).visibility === "hidden") continue;
-      const href = control.getAttribute("href");
-      if (href && !href.startsWith("#") && listingEntry(href, "", pageUrl)?.scope !== page.scope) continue;
-      return control;
+      if (!control.matches(PAGE_BUTTON) || !displayed(control) || !staysInListing(control, page, pageUrl)) continue;
+      if (control.closest('[aria-busy="true"]')) continue;
+      const labels = [control.getAttribute("aria-label"), control.getAttribute("title"), control.textContent];
+      if (!control.matches(STANDARD_NEXT) && !labels.some((label) => NEXT_LABELS.has(nextLabel(label)))) continue;
+      if (!disabled(control)) return { action: "next", control };
+      atEnd = true;
     }
-    return null;
+    for (const pager of document.querySelectorAll(PAGINATION)) {
+      if (!displayed(pager) || pager.closest('[aria-busy="true"]')) continue;
+      const current = pager.querySelector('[aria-current="page"],.shopee-mini-page-controller__current,.shopee-button-solid--primary');
+      const total = pager.querySelector('.shopee-mini-page-controller__total');
+      const pageNumber = Number(cleanLabel(current?.textContent));
+      const totalPages = Number(cleanLabel(total?.textContent));
+      if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) continue;
+      if (totalPages > 0) {
+        if (pageNumber >= totalPages) atEnd = true;
+        else hasLaterPage = true;
+      }
+      for (const control of pager.querySelectorAll(PAGE_BUTTON)) {
+        if (cleanLabel(control.textContent) === String(pageNumber + 1) &&
+            displayed(control) && !disabled(control) && staysInListing(control, page, pageUrl)) {
+          return { action: "next", control };
+        }
+      }
+    }
+    return { action: atEnd && !hasLaterPage ? "end" : "waiting" };
   }
 
   class QueuePause extends Error {
@@ -172,7 +231,7 @@
           }
           item.message = `已确认第 ${item.pages.length} 页入库`;
           await io.save();
-          if (item.pages.length >= state.pageLimit) {
+          if (state.pageLimit > 0 && item.pages.length >= state.pageLimit) {
             item.message = "达到本入口页数设置";
             break;
           }
@@ -202,5 +261,8 @@
     await io.save();
   }
 
-  globalThis.LatAmQueue = { HOME, publicShopeeUrl, listingEntry, keywordEntry, categoryLinks, listingReceipt, nextListingControl, QueuePause, runQueue };
+  globalThis.LatAmQueue = {
+    HOME, CURRENT_TASK_PREFIX, publicShopeeUrl, listingEntry, keywordEntry, queuedEntry, currentListingTask,
+    categoryLinks, listingReceipt, listingPagination, QueuePause, runQueue
+  };
 })();

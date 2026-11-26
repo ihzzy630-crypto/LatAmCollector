@@ -1,12 +1,12 @@
 # LatAm Collector
 
-面向巴西跨境电商选品的本地数据管理与采集平台。选品雷达 v0.6.0 为 Shopee 与 SHEIN 商品统一中文品类，支持分组筛选、匹配数量和手动改类。平台也支持商品和评论采集、销量与价格追踪、收藏和备注。
+面向巴西跨境电商选品的本地数据管理与采集平台。选品雷达为 Shopee 与 SHEIN 商品统一中文品类，支持分组筛选、匹配数量和手动改类。平台也支持商品和评论采集、销量与价格追踪、收藏和备注。
 
 Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的公开商品与评论响应，并发送到本机平台，不读取密码或请求头。
 
 ## Windows EXE 安装
 
-1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.0/LatAmCollector-Setup-0.6.0-x64.exe)。安装包含运行环境、选品雷达和 Chrome 采集助手。
+1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.1/LatAmCollector-Setup-0.6.1-x64.exe)。安装包包含运行环境、选品雷达和 Chrome 采集助手。
 2. 已安装过的用户选择原来的安装目录。安装器会识别 `D:\gpt专用文件\LatAmCollector`，每台电脑在各自安装目录的 `data` 文件夹存放商品库。
 3. 双击桌面的 **LatAmCollector** 打开选品雷达。需要 Windows 登录时启动服务，可在安装过程中勾选自动启动。
 4. 在 Chrome 按下文加载安装目录里的扩展文件夹。开始菜单的 **Chrome Helper Folder** 打开该目录。
@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 ## 更新选品雷达
 
-已经安装本地平台时，解压雷达更新包，把其中的 `app` 和 `static` 文件夹复制到 `D:\gpt专用文件\LatAmCollector`，选择替换文件。重启本地平台后，左侧版本显示 v0.6.0。使用 Windows 登录自启动的用户可以退出 Windows 登录后再登录。
+已经安装本地平台时，运行新版安装包并选择原来的安装目录。重启本地平台后，左侧版本显示 v0.6.1。
 
 首次启动会整理商品库里的旧品类，随后按平台品类和葡语标题为新商品归类。品类旁的数字按当前应用的筛选条件计算。可以在商品右侧点击“改品类”纠正自动结果，也可以随时恢复自动分类。
 
@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 - 任务配置、数据源状态和运行日志
 - 只监听本机 `127.0.0.1`，不会对局域网或互联网开放管理端
 - Chrome 自动采集助手（`chrome_extension` 文件夹）
-- 当前分类或搜索列表一键批量分页，默认最多 3000 件、每 3 秒一批
+- Shopee 当前分类或搜索列表一键翻页，按网站分页入库
 - 批量任务进度、主动暂停与同一列表续采
 
 ## 安装 Chrome 采集助手
@@ -71,11 +71,13 @@ powershell -ExecutionPolicy Bypass -File $setup
 4. 选择 LatAmCollector 安装目录下的 `chrome_extension` 文件夹。
 5. 保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站页面。
 
-Chrome 助手 v0.6.0 的「Shopee 子类和关键词批量采集」支持从已打开的巴西站页面读取分类链接、按组添加 160 个葡语搜索词，以及批量粘贴自定义词和 Shopee 列表链接。开启「自动加入列表中发现的子类」后，助手会把当前页面公开链接中可识别的下级分类追加到队列。
+在 Shopee 巴西站的分类页或搜索结果页打开 Chrome 助手，点「自动翻页采集」。助手从原标签页的当前页开始，确认入库后操作下一页。保持该标签页和旁边的进度标签页运行。
+
+「Shopee 子类和关键词批量采集」支持从已打开的巴西站页面读取分类链接、按组添加 160 个葡语搜索词，以及批量粘贴自定义词和 Shopee 列表链接。开启「自动加入列表中发现的子类」后，助手会把当前页面公开链接中可识别的下级分类追加到队列。
 
 点「一键开始」后，队列在独立标签页按顺序采集，在本页商品确认入库后使用网页上的下一页按钮。每个入口最多采集设置的页数，也会在最后一页或重复页结束。保留队列页和本地平台运行。碰到验证、登录或访问受限时，点「查看采集页」手动处理，再点「继续采集」。
 
-已经安装本地平台时，可以单独更新 Chrome 助手。解压 Chrome 助手安装包，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
+已经安装本地平台时，可以[单独下载新版 Chrome 助手](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.1/LatAmCollector-Chrome-v0.6.1.zip)。解压后，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
 
 ## 后续接口
 

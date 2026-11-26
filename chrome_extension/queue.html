@@ -14,13 +14,13 @@
     <header class="topbar">
       <div>
         <p class="brand">LatAm Collector</p>
-        <h1>Shopee 批量采集</h1>
-        <p class="muted">把巴西站的分类和葡语搜索词加入队列，逐个翻页并保存到本地选品雷达。</p>
+        <h1 id="page-title">Shopee 批量采集</h1>
+        <p id="page-description" class="muted">把巴西站的分类和葡语搜索词加入队列，逐个翻页并保存到本地选品雷达。</p>
       </div>
       <a class="button" href="http://127.0.0.1:8765/" target="_blank" rel="noopener">打开选品雷达 ↗</a>
     </header>
 
-    <div class="sources">
+    <div id="sources" class="sources">
       <section class="panel" aria-labelledby="category-title">
         <div class="section-title">
           <h2 id="category-title">分类与子类</h2>
@@ -56,7 +56,7 @@
         <h2 id="queue-title">采集队列</h2>
         <button id="clear-done" data-edit class="quiet" type="button">清理已完成</button>
       </div>
-      <div class="options">
+      <div id="options" class="options">
         <label for="page-limit">每个入口最多 <input id="page-limit" data-edit type="number" min="1" max="50" value="4"> 页</label>
         <label class="check"><input id="include-children" data-edit type="checkbox" checked> 自动加入列表中发现的子类</label>
       </div>
@@ -72,7 +72,7 @@
       <p class="muted small">保持此标签页和本地平台运行。遇到验证或访问受限时，处理当前采集页后再点继续。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">采集入口</th><th scope="col">状态</th><th scope="col">页数</th><th scope="col">入库条次</th><th scope="col">新增商品</th><th scope="col">操作</th></tr></thead>
+          <thead><tr><th scope="col">采集入口</th><th scope="col">状态</th><th scope="col">页数</th><th scope="col">入库条次</th><th scope="col">新增商品</th><th id="operations" scope="col">操作</th></tr></thead>
           <tbody id="entries"></tbody>
         </table>
       </div>

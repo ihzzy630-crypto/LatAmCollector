@@ -45,7 +45,7 @@ function createTab({ url = new URL("search?keyword=test", home).href, text = "",
   const document = new EventTarget();
   document.readyState = "complete";
   document.body = { innerText: text };
-  document.querySelectorAll = () => nextControl ? [nextControl] : [];
+  document.querySelectorAll = (selector) => nextControl && selector.includes('a[rel~="next"]') ? [nextControl] : [];
   const requests = [];
   const responses = [];
   const timers = [];
@@ -296,6 +296,7 @@ test("An explicit queue restart after manual recovery saves the already loaded l
 async function createPopup(tab) {
   const elements = new Map();
   const opened = [];
+  const tasks = new Map();
   const document = {
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, {
@@ -305,16 +306,17 @@ async function createPopup(tab) {
       return elements.get(id);
     }
   };
-  runInNewContext(popup, {
-    document, URL, AbortSignal,
+  runInNewContext(queueCore + "\n" + popup, {
+    document, URL, URLSearchParams, AbortSignal, crypto,
     fetch: async () => ({ ok: true, json: async () => ({ products: 1, reviews: 0 }) }),
     chrome: {
+      runtime: { getURL: (path) => `chrome-extension://latam/${path}` },
       tabs: {
-        query: async () => [{ id: 1, url: tab.url }],
+        query: async () => [{ id: 1, url: tab.url, windowId: 2, index: 4 }],
         sendMessage: async (_id, message) => tab.message(message),
         create: ({ url }) => opened.push(url)
       },
-      storage: { local: {
+      storage: { session: { set: async (data) => Object.entries(data).forEach(([key, value]) => tasks.set(key, value)) }, local: {
         get: async (defaults) => ({
           ...defaults,
           bulkStatus: { platform: "shopee", status: "blocked", message: "Other tab error" }
@@ -324,7 +326,7 @@ async function createPopup(tab) {
     setTimeout() {}
   });
   await tick();
-  return { elements, opened };
+  return { elements, opened, tasks };
 }
 
 test("The popup uses the active tab and the Shopee button opens the official homepage", async () => {
@@ -338,14 +340,36 @@ test("The popup uses the active tab and the Shopee button opens the official hom
   assert.deepEqual(opened, [home]);
 });
 
-test("The popup reports a saved Popular list without offering an unrelated bulk action", async () => {
-  const tab = createTab({ url: categoryUrl, onCapture: () => ({ ok: true, result: { products: 1 } }) });
+test("One popup click starts pagination from the saved Popular tab with its filters", async () => {
+  const filtered = categoryUrl + "?sortBy=ctime&page=2&minPrice=32&locations=S%C3%A3o%20Paulo";
+  const tab = createTab({ url: filtered, onCapture: () => ({ ok: true, result: { products: 1 } }) });
   await tab.loadList(recommendations());
-  const { elements } = await createPopup(tab);
+  const { elements, opened, tasks } = await createPopup(tab);
   assert.equal(elements.get("page").textContent, "已识别分类列表");
   assert.equal(elements.get("bulk-state").textContent, "本页 1 件商品已入库");
-  assert.equal(elements.get("bulk-start").textContent, "本页已入库");
+  assert.equal(elements.get("bulk-start").textContent, "自动翻页采集");
+  assert.equal(elements.get("bulk-start").disabled, false);
   assert.equal(elements.get("bulk-limit").hidden, true);
+  await elements.get("bulk-start").click();
+  const id = new URL(opened[0]).searchParams.get("current");
+  const task = tasks.get("latamShopeeCurrent:" + id);
+  assert.equal(task.sourceTabId, 1);
+  assert.equal(task.entries[0].url, filtered);
+  assert.equal(task.pageLimit, 0);
+  assert.equal(tab.requests.length, 1);
+});
+
+test("A missing pager stays pending until Shopee explicitly reports the last page", async () => {
+  const tab = createTab({ onCapture: () => ({ ok: true, result: { products: 1 } }) });
+  const next = () => {
+    const { receipt } = tab.message({ type: "LATAM_QUEUE_STATUS" });
+    return tab.message({ type: "LATAM_QUEUE_NEXT", scope: "search:test", receiptId: receipt.id, lookForPagination: true });
+  };
+  await tab.loadList(products(1));
+  assert.equal(next().action, "waiting");
+  await tab.loadList(response({ error: 0, items: [{ itemid: 2, shopid: 55 }], nomore: true }));
+  assert.equal(next().action, "end");
+  assert.equal(tab.requests.length, 2);
 });
 
 if (process.env.LATAM_SHOPEE_POPULAR_FIXTURE) {

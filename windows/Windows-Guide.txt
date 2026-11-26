@@ -1,7 +1,7 @@
 LatAmCollector Windows 安装指南
 
 安装与启动
-1. 双击 LatAmCollector-Setup-0.6.0-x64.exe，确认安装目录。
+1. 双击 LatAmCollector-Setup-0.6.1-x64.exe，确认安装目录。
 2. 用桌面的 LatAmCollector 快捷方式打开选品雷达。浏览器会在本地服务启动后打开 http://127.0.0.1:8765。
 3. 如需在 Windows 登录时启动服务，在安装时勾选自动启动。登录启动时浏览器保持关闭。
 
@@ -11,6 +11,7 @@ LatAmCollector Windows 安装指南
 3. 选择安装目录下的 chrome_extension 文件夹。开始菜单 LatAmCollector 分组里的 Chrome Helper Folder 可以打开该目录。
 4. 已从同一个目录加载过助手时，在扩展页面点「重新加载」，随后刷新已打开的 Shopee 或 SHEIN 标签页。
 5. 保持选品雷达运行。在助手弹窗看到「本地平台 运行中」后即可采集。
+6. 在 Shopee 分类页或搜索结果点击「自动翻页采集」。助手从当前页开始入库并翻到列表末页，旁边的新标签页显示进度。
 
 数据与更新
 每台电脑的商品库保存在自己的安装目录下的 data 文件夹。更新时选择原安装目录，继续使用原来的商品库。

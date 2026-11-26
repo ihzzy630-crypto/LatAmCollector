@@ -2,7 +2,10 @@
 
 const core = globalThis.LatAmQueue;
 const keywordGroups = globalThis.LatAmShopeeKeywords;
-const STATE_KEY = "latamShopeeQueueV1";
+const taskId = new URLSearchParams(location.search).get("current") || "";
+const currentMode = /^[a-f0-9-]{36}$/i.test(taskId);
+const STATE_KEY = currentMode ? core.CURRENT_TASK_PREFIX + taskId : "latamShopeeQueueV1";
+const stateStore = currentMode ? chrome.storage.session : chrome.storage.local;
 const WORKER_KEY = "latamShopeeQueueTab";
 const LOCK = "latam-shopee-queue";
 const LOCAL_SYSTEM = "http://127.0.0.1:8765/api/system";
@@ -18,7 +21,7 @@ let editing = false;
 let discovering = false;
 
 async function load() {
-  const data = await chrome.storage.local.get(STATE_KEY);
+  const data = await stateStore.get(STATE_KEY);
   if (data[STATE_KEY]) state = data[STATE_KEY];
 }
 
@@ -44,13 +47,13 @@ function render() {
   el("start").disabled = locked || !hasPending();
   el("start").textContent = state.status === "paused" && current ? "继续采集" : "一键开始";
   el("pause").disabled = !controller || controller.signal.aborted;
-  el("show-worker").disabled = !current && !state.entries.some((entry) => entry.pages.length);
+  el("show-worker").disabled = currentMode ? !state.entries.length : !current && !state.entries.some((entry) => entry.pages.length);
   if (document.activeElement !== el("page-limit")) el("page-limit").value = state.pageLimit;
   el("include-children").checked = state.includeChildren;
   setText("queue-stats", `已结束 ${done}/${state.entries.length} 个入口 · 入库 ${number.format(saved)} 条次 · 新增 ${number.format(added)} 件`);
   el("queue-status").dataset.status = state.status;
   const message = running && current ? `${current.label} · ${current.message}` : state.message;
-  setText("queue-status", message || "添加分类或搜索词后即可开始。");
+  setText("queue-status", message || (currentMode ? "等待当前列表加载。" : "添加分类或搜索词后即可开始。"));
 
   const rows = document.createDocumentFragment();
   for (const entry of state.entries) {
@@ -76,20 +79,22 @@ function render() {
     row.insertCell().textContent = String(entry.pages.length);
     row.insertCell().textContent = number.format(entry.saved);
     row.insertCell().textContent = number.format(entry.added);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "quiet";
-    remove.textContent = "移除";
-    remove.dataset.remove = entry.key;
-    remove.setAttribute("aria-label", `移除 ${entry.label}`);
-    remove.disabled = locked || (state.needsReview && entry.key === state.currentKey);
-    row.insertCell().append(remove);
+    if (!currentMode) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "quiet";
+      remove.textContent = "移除";
+      remove.dataset.remove = entry.key;
+      remove.setAttribute("aria-label", `移除 ${entry.label}`);
+      remove.disabled = locked || (state.needsReview && entry.key === state.currentKey);
+      row.insertCell().append(remove);
+    }
     rows.append(row);
   }
   if (!state.entries.length) {
     const row = document.createElement("tr");
     const cell = row.insertCell();
-    cell.colSpan = 6;
+    cell.colSpan = currentMode ? 5 : 6;
     cell.className = "empty";
     cell.textContent = "队列为空";
     rows.append(row);
@@ -98,7 +103,7 @@ function render() {
 }
 
 async function save() {
-  await chrome.storage.local.set({ [STATE_KEY]: state });
+  await stateStore.set({ [STATE_KEY]: state });
   render();
 }
 
@@ -116,7 +121,7 @@ function markInterrupted() {
 async function exclusive(work) {
   try {
     await navigator.locks.request(LOCK, { ifAvailable: true }, async (lock) => {
-      if (!lock) return setText("edit-feedback", "另一个采集窗口正在使用队列。");
+      if (!lock) return setText(currentMode ? "queue-status" : "edit-feedback", "另一个采集窗口正在运行。请暂停后再开始。");
       editing = true;
       try {
         await load();
@@ -128,7 +133,7 @@ async function exclusive(work) {
       }
     });
   } catch (error) {
-    setText("edit-feedback", error?.message || "无法更新采集队列");
+    setText(currentMode ? "queue-status" : "edit-feedback", error?.message || "无法更新采集队列");
   }
 }
 
@@ -138,7 +143,7 @@ function addEntries(entries) {
   for (const entry of entries) {
     if (!entry || existing.has(entry.key)) continue;
     existing.add(entry.key);
-    state.entries.push({ ...entry, status: "queued", pages: [], saved: 0, added: 0, message: "" });
+    state.entries.push(core.queuedEntry(entry));
     count += 1;
   }
   return count;
@@ -199,8 +204,7 @@ async function discover() {
 }
 
 async function workerTab() {
-  const result = await chrome.storage.session.get(WORKER_KEY);
-  const id = result[WORKER_KEY];
+  const id = currentMode ? state.sourceTabId : (await chrome.storage.session.get(WORKER_KEY))[WORKER_KEY];
   if (!Number.isInteger(id)) return null;
   try {
     return await chrome.tabs.get(id);
@@ -246,17 +250,24 @@ function runIO(signal) {
   let allowPrepare = false;
   let localChecked = false;
 
+  function matchesListing(entry, page) {
+    return currentMode ? page?.key === entry.key : page?.scope === entry.scope;
+  }
+
   async function arrive(entry, resuming, needsReview) {
     if (!localChecked) await verifyLocal(signal);
     localChecked = true;
     const worker = await workerTab();
     const page = core.listingEntry(worker?.pendingUrl || worker?.url);
-    if (resuming && page?.scope === entry.scope) {
+    if ((currentMode || resuming) && matchesListing(entry, page)) {
       tabId = worker.id;
       allowPrepare = true;
       navigatingSince = Date.now();
       staleReceipt = "";
       return;
+    }
+    if (currentMode) {
+      throw new core.QueuePause("原 Shopee 标签页已关闭或切换列表。请回到该列表，或在要采集的标签页重新开始。", true);
     }
     if (needsReview || (worker?.url && !core.publicShopeeUrl(worker.url))) {
       throw new core.QueuePause("请点「查看采集页」，处理页面提示并打开队列中的当前入口，然后继续。", true);
@@ -286,16 +297,18 @@ function runIO(signal) {
     while (Date.now() < deadline) {
       signal.throwIfAborted();
       const tab = await chrome.tabs.get(tabId).catch(() => null);
-      if (!tab) throw new core.QueuePause("采集标签页已关闭。请点「查看采集页」重新打开当前入口后继续。");
+      if (!tab) throw new core.QueuePause(currentMode
+        ? "原 Shopee 标签页已关闭，请从正常商品列表重新开始。"
+        : "采集标签页已关闭。请点「查看采集页」重新打开当前入口后继续。");
       if (tab.status === "complete") {
         const page = core.listingEntry(tab.url);
         const snapshot = await messageTab(tabId, "LATAM_QUEUE_STATUS");
         const status = snapshot?.status;
         if (status?.status === "blocked") throw new core.QueuePause(status.message, true);
-        if (page?.scope !== entry.scope && Date.now() - navigatingSince > 2000) {
+        if (!matchesListing(entry, page) && Date.now() - navigatingSince > 2000) {
           throw new core.QueuePause("Shopee 打开了另一个页面。请检查采集页，再打开当前入口。", true);
         }
-        if (page?.scope === entry.scope && snapshot?.scope === entry.scope && status?.platform === "shopee") {
+        if (matchesListing(entry, page) && snapshot?.scope === entry.scope && status?.platform === "shopee") {
           const receipt = snapshot.receipt;
           if (status.status === "running" && status.mode !== "category_page") {
             throw new core.QueuePause("采集页正在运行另一个任务，请暂停该任务后继续。");
@@ -317,11 +330,20 @@ function runIO(signal) {
 
   async function next(entry, page) {
     await sleep(2300, signal);
-    signal.throwIfAborted();
-    const result = await messageTab(tabId, "LATAM_QUEUE_NEXT", { scope: entry.scope, receiptId: page.id });
-    if (result?.action === "clicked") return true;
-    if (result?.action === "end") return false;
-    throw new core.QueuePause(result?.message || "翻页时采集页发生变化，请检查当前页面。", result?.needsReview ?? true);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      signal.throwIfAborted();
+      const result = await messageTab(tabId, "LATAM_QUEUE_NEXT", {
+        scope: entry.scope, listingKey: currentMode ? entry.key : undefined,
+        receiptId: page.id, lookForPagination: attempt === 0
+      });
+      if (result?.action === "clicked") return true;
+      if (result?.action === "end") return false;
+      if (result?.action !== "waiting") {
+        throw new core.QueuePause(result?.message || "翻页时采集页发生变化，请检查当前页面。", result?.needsReview ?? true);
+      }
+      await sleep(700, signal);
+    }
+    throw new core.QueuePause("本页已入库。暂未识别到分页控件，请查看采集页后继续。", true);
   }
 
   async function addChildren(entry) {
@@ -372,7 +394,7 @@ el("clear-done").onclick = () => exclusive(async () => {
   if (!state.entries.length) Object.assign(state, { status: "idle", message: "" });
   await save();
 });
-el("start").onclick = () => exclusive(async () => {
+async function startRun() {
   if (!hasPending()) return;
   controller = new AbortController();
   state.message = "";
@@ -382,28 +404,30 @@ el("start").onclick = () => exclusive(async () => {
   } finally {
     controller = null;
   }
-});
+}
+
+el("start").onclick = () => exclusive(startRun);
 el("pause").onclick = () => { controller?.abort(); render(); };
 el("show-worker").onclick = async () => {
   try {
     const current = state.entries.find((entry) => entry.key === state.currentKey);
     let tab = await workerTab();
-    if (!tab && current && state.status === "paused") {
+    if (!tab && !currentMode && current && state.status === "paused") {
       await exclusive(async () => {
         tab = await workerTab() || await openWorker(current, true);
         await save();
       });
     }
-    if (!tab) return;
+    if (!tab) return setText("queue-status", "原采集标签页已关闭。请从 Shopee 商品列表重新开始。");
     await chrome.tabs.update(tab.id, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true });
   } catch (_) {
-    setText("edit-feedback", "无法打开采集页。请打开当前入口后再试。");
+    setText("queue-status", "无法打开采集页。请打开当前入口后再试。");
   }
 };
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  const value = area === "local" && changes[STATE_KEY]?.newValue;
+  const value = area === (currentMode ? "session" : "local") && changes[STATE_KEY]?.newValue;
   if (value && !editing) {
     state = value;
     render();
@@ -411,9 +435,23 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 (async () => {
+  if (currentMode) {
+    document.title = "Shopee 当前列表 · LatAm Collector";
+    setText("page-title", "Shopee 当前列表");
+    setText("page-description", "从原标签页的当前页继续翻页，直到 Shopee 的可用分页末尾。");
+    for (const id of ["sources", "options", "clear-done", "operations"]) el(id).hidden = true;
+  }
   await load();
   render();
+  if (currentMode && !state.entries.length) {
+    setText("queue-status", "当前任务已关闭。请在 Shopee 商品列表打开助手重新开始。");
+    return;
+  }
   if (state.status === "running") {
     await exclusive(save);
+  } else if (currentMode && state.status === "idle") {
+    await exclusive(async () => {
+      if (state.status === "idle") await startRun();
+    });
   }
 })().catch(() => setText("queue-status", "无法读取采集队列，请重新打开此页。"));

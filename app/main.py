@@ -809,7 +809,7 @@ def export_xlsx(kind: str):
 @app.get("/api/system")
 def system_info():
     return {
-        "version": "0.6.0",
+        "version": "0.6.1",
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
         "features": ["Shopee/SHEIN 列表批量采集", "标准品类与手动改类", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],

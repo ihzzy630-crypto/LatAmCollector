@@ -1,4 +1,4 @@
-LatAmCollector Chrome Helper v0.6.0
+LatAmCollector Chrome Helper v0.6.1
 
 Install:
 1. Open Chrome and visit chrome://extensions
@@ -6,7 +6,7 @@ Install:
 3. Click Load unpacked.
 4. Select this chrome_extension folder.
 5. Keep LatAmCollector running, open Shopee or SHEIN Brazil, and refresh the page.
-6. On a category/search page, open the extension and click the bulk capture button.
+6. On a Shopee category or search results page, click 自动翻页采集 to start from that tab's current page. Keep the Shopee tab, progress tab, and local platform open.
 
 Update an existing installation:
 1. Replace the files in the currently loaded chrome_extension folder with the new ones.
@@ -21,7 +21,7 @@ Shopee category and keyword queue:
 5. The queue waits for a local save before clicking a visible next-page control. It stops at the last page, the configured limit, or a repeated page for that entry.
 6. If Shopee requires login or verification or limits access, the queue pauses. Use 查看采集页 to check the current tab, then continue the queue after the product list is available again.
 
-On a Shopee category page, the Popular view shows how many products from the current page reached the local platform. If saving fails, use the retry button in the popup. For bulk collection, open a Shopee search result or switch the sorting to Mais Recente.
+The popup starts automatic pagination on the current Shopee category or search results, including the Popular sort. It keeps the existing listing and filters. Open the adjacent progress tab to review or pause the task.
 
 Privacy:
 - Captures only supported public Shopee/SHEIN product and review responses, plus public SHEIN product cards already rendered on the page.

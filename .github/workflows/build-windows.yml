@@ -97,6 +97,9 @@ jobs:
           fi
           version=${setups[0]#dist/LatAmCollector-Setup-}
           version=${version%-x64.exe}
-          gh release create "windows-v$version" "${setups[0]}" \
+          helper="dist/LatAmCollector-Chrome-v$version.zip"
+          zip -q -X -r "$helper" chrome_extension
+          unzip -tq "$helper"
+          gh release create "windows-v$version" "${setups[0]}" "$helper" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "LatAmCollector Windows v$version" --notes-file windows/Windows-Guide.txt

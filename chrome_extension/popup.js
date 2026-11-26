@@ -2,11 +2,14 @@
 
 const LOCAL_URL = "http://127.0.0.1:8765";
 const SHOPEE_HOME = "https://shopee.com.br/";
+const queue = globalThis.LatAmQueue;
 let activeTab = null;
 let platformReady = false;
 let pageReady = false;
 let activePlatform = "";
 let bulkSnapshot = {};
+let startingCurrent = false;
+let startedCurrentTab = null;
 
 function setStatus(id, text, ok) {
   const element = document.getElementById(id);
@@ -21,6 +24,24 @@ function renderBulk(status) {
   const start = document.getElementById("bulk-start");
   const stop = document.getElementById("bulk-stop");
   const categoryPage = status?.mode === "category_page";
+  if (queue.listingEntry(activeTab?.url)) {
+    const blocked = status?.status === "blocked";
+    const otherTask = status?.status === "running" && !categoryPage;
+    const started = startedCurrentTab === activeTab.id;
+    document.getElementById("bulk-title").textContent = "当前 Shopee 商品列表";
+    document.getElementById("bulk-limit").hidden = true;
+    document.getElementById("bulk-actions").style.gridTemplateColumns = otherTask ? "" : "1fr";
+    document.getElementById("bulk-help").textContent = "从当前页翻到列表末页。新标签页显示进度，可以暂停或继续。";
+    bar.style.width = "0%";
+    state.textContent = started && !blocked ? "已打开自动翻页任务，请看旁边的进度标签页。" :
+      status?.message || "等待读取商品列表";
+    state.className = blocked ? "muted bad" : "muted";
+    start.textContent = blocked ? "等待页面恢复" : "自动翻页采集";
+    start.disabled = !platformReady || !pageReady || blocked || otherTask || startingCurrent || started;
+    stop.hidden = !otherTask;
+    stop.disabled = !otherTask;
+    return;
+  }
   document.getElementById("bulk-title").textContent = categoryPage ? "当前分类商品" : "一键采集当前商品列表";
   document.getElementById("bulk-limit").hidden = categoryPage;
   document.getElementById("bulk-actions").style.gridTemplateColumns = categoryPage ? "1fr" : "";
@@ -152,6 +173,30 @@ async function sendBulkCommand(action) {
     return;
   }
   const categoryPage = bulkSnapshot.mode === "category_page";
+  const currentTask = action === "start" && queue.currentListingTask(activeTab);
+  if (currentTask) {
+    if (!platformReady || bulkSnapshot.status === "blocked" ||
+        (bulkSnapshot.status === "running" && !categoryPage) || startingCurrent || startedCurrentTab === activeTab.id) return;
+    startingCurrent = true;
+    renderBulk(bulkSnapshot);
+    const tab = activeTab;
+    const id = crypto.randomUUID();
+    try {
+      await chrome.storage.session.set({ [queue.CURRENT_TASK_PREFIX + id]: currentTask });
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL("queue.html") + "?current=" + id,
+        active: false, windowId: tab.windowId, index: tab.index + 1
+      });
+      startedCurrentTab = tab.id;
+      renderBulk(bulkSnapshot);
+    } catch (_) {
+      document.getElementById("bulk-state").textContent = "无法打开自动翻页任务，请重新打开插件后再试。";
+      document.getElementById("bulk-state").className = "muted bad";
+    } finally {
+      startingCurrent = false;
+    }
+    return;
+  }
   if (action === "start" && (["blocked", "running"].includes(bulkSnapshot.status) ||
       (categoryPage && bulkSnapshot.status === "done"))) return;
   if (action === "start" && !platformReady) {

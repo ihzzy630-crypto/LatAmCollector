@@ -21,11 +21,12 @@
   }
 
   function queuePageState() {
-    const scope = queue?.listingEntry(globalThis.location?.href)?.scope;
+    const listing = queue?.listingEntry(globalThis.location?.href);
+    const scope = listing?.scope;
     const current = readMainStatus();
     const status = current && scope ? { ...current, platform: "shopee" } : current;
     return {
-      scope, status,
+      scope, key: listing?.key, status,
       receipt: scope && scope === listReceipt?.scope ? listReceipt : null
     };
   }
@@ -124,19 +125,29 @@
       return false;
     }
     if (message?.type === "LATAM_QUEUE_NEXT") {
-      const { scope, receipt, status } = queuePageState();
+      const { scope, key, receipt, status } = queuePageState();
       if (!status || status.status === "blocked") {
         sendResponse({ action: "pause", message: status?.message || "请检查 Shopee 页面", needsReview: true });
         return false;
       }
-      if (!scope || scope !== message.scope || !receipt || receipt.id !== message.receiptId || receipt.phase !== "saved" ||
+      if (!scope || scope !== message.scope || (message.listingKey && key !== message.listingKey) ||
+          !receipt || receipt.id !== message.receiptId || receipt.phase !== "saved" ||
           (status.status === "running" && status.mode !== "category_page")) {
         sendResponse({ action: "pause", message: "商品列表已发生变化，请检查采集标签页", needsReview: true });
         return false;
       }
-      const next = queue.nextListingControl(document, location.href);
-      sendResponse({ action: next ? "clicked" : "end" });
-      if (next) next.click();
+      const pagination = queue.listingPagination(document, location.href);
+      if (pagination.action === "next") {
+        sendResponse({ action: "clicked" });
+        pagination.control.click();
+      } else if (pagination.action === "end" || receipt.lastPage) {
+        sendResponse({ action: "end" });
+      } else {
+        sendResponse({ action: "waiting" });
+        if (message.lookForPagination && document.scrollingElement) {
+          document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+        }
+      }
       return false;
     }
     if (message?.type !== "LATAM_BULK_COMMAND") return false;

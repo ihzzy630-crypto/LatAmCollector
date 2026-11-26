@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 require("../chrome_extension/queue_core.js");
 require("../chrome_extension/queue_keywords.js");
-const { HOME, listingEntry, keywordEntry, categoryLinks, listingReceipt, nextListingControl, runQueue, QueuePause } = globalThis.LatAmQueue;
+const { HOME, listingEntry, keywordEntry, categoryLinks, listingReceipt, listingPagination, runQueue, QueuePause } = globalThis.LatAmQueue;
 
 const rootUrl = HOME + "Casa-e-Construção-cat.11059983";
 const childUrl = HOME + "Decoração-cat.11059983.11059984";
@@ -62,9 +62,43 @@ test("Only a visible next control that stays in the same listing can be clicked"
   const external = control("https://example.com/search?keyword=luminária");
   const hidden = control(searchUrl, { hidden: true });
   const disabled = control(searchUrl, { disabled: true });
-  const doc = { querySelectorAll: () => [other, external, hidden, disabled, valid] };
-  assert.equal(nextListingControl(doc, searchUrl), valid);
-  assert.equal(nextListingControl({ querySelectorAll: () => [disabled] }, searchUrl), null);
+  const links = (controls) => ({ querySelectorAll: (selector) => selector.includes('a[rel~="next"]') ? controls : [] });
+  assert.equal(listingPagination(links([other, external, hidden, disabled, valid]), searchUrl).control, valid);
+  assert.equal(listingPagination(links([disabled]), searchUrl).action, "end");
+  assert.equal(listingPagination(links([other, external, hidden]), searchUrl).action, "waiting");
+});
+
+test("A title-only Portuguese next button and a numbered pager are supported", () => {
+  const button = (text, title) => ({
+    textContent: text, matches: (selector) => !selector.includes("pagination-next"),
+    getAttribute: (name) => name === "title" ? title : null,
+    closest: () => null, getClientRects: () => [{}]
+  });
+  const titled = button("", "Próxima página");
+  const pageTwo = button("2");
+  const pager = {
+    closest: () => null, getClientRects: () => [{}],
+    querySelector: (selector) => ({ textContent: selector.includes("__total") ? "2" : "1" }),
+    querySelectorAll: () => [pageTwo]
+  };
+  const doc = { querySelectorAll: (selector) => selector.includes('a[rel~="next"]') ? [titled] : [] };
+  assert.equal(listingPagination(doc, searchUrl).control, titled);
+  const numeric = { querySelectorAll: (selector) => selector.includes('a[rel~="next"]') ? [pageTwo] : [pager] };
+  assert.equal(listingPagination(numeric, searchUrl).control, pageTwo);
+});
+
+test("A current-list task follows all available pages past the multi-list default", async () => {
+  const state = makeState(keywordEntry("caneta"));
+  state.pageLimit = 0;
+  let pageNumber = 0;
+  await runQueue(state, {
+    save: async () => {}, arrive: async () => {},
+    read: async () => makeReceipt(String(++pageNumber)),
+    next: async () => pageNumber < 6
+  }, new AbortController().signal);
+  assert.equal(state.status, "done");
+  assert.equal(state.entries[0].pages.length, 6);
+  assert.equal(state.entries[0].message, "已到可用分页末尾");
 });
 
 test("The queue expands discovered children, stops repeated pages and reports only confirmed saves", async () => {
