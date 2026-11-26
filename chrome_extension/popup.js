@@ -190,6 +190,13 @@ document.getElementById("bulk-max").addEventListener("change", async (event) => 
   event.target.value = value;
   await chrome.storage.local.set({ bulkMaxItems: value });
 });
+document.getElementById("queue").addEventListener("click", async () => {
+  const url = chrome.runtime.getURL("queue.html");
+  const tabs = await chrome.tabs.query({});
+  const existing = tabs.find(tab => tab.url === url);
+  if (existing) await chrome.tabs.update(existing.id, { active: true });
+  else await chrome.tabs.create({ url });
+});
 document.getElementById("shopee-home").addEventListener("click", () => chrome.tabs.create({ url: SHOPEE_HOME }));
 document.getElementById("dashboard").addEventListener("click", () => chrome.tabs.create({ url: LOCAL_URL + "/?page=products" }));
 

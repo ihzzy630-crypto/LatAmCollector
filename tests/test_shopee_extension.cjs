@@ -9,6 +9,7 @@ const { runInNewContext } = require("node:vm");
 const extensionFile = (name) => readFileSync(join(__dirname, "../chrome_extension", name), "utf8");
 const hook = extensionFile("page_hook.js");
 const bridge = extensionFile("bridge.js");
+const queueCore = extensionFile("queue_core.js");
 const popup = extensionFile("popup.js");
 const home = "https://shopee.com.br/";
 const listUrl = new URL("/api/v4/search/search_items?keyword=test&limit=1", home).href;
@@ -40,10 +41,11 @@ function recommendations() {
 }
 
 function createTab({ url = new URL("search?keyword=test", home).href, text = "",
-  storage = new Map(), onCapture = () => undefined } = {}) {
+  storage = new Map(), onCapture = () => undefined, nextControl = null } = {}) {
   const document = new EventTarget();
   document.readyState = "complete";
   document.body = { innerText: text };
+  document.querySelectorAll = () => nextControl ? [nextControl] : [];
   const requests = [];
   const responses = [];
   const timers = [];
@@ -71,8 +73,8 @@ function createTab({ url = new URL("search?keyword=test", home).href, text = "",
     },
     setTimeout: (callback) => timers.push(callback)
   });
-  runInNewContext(bridge, {
-    document, URL, CustomEvent,
+  runInNewContext(queueCore + "\n" + bridge, {
+    document, URL, URLSearchParams, CustomEvent, performance, location: new URL(url),
     chrome: { runtime: {
       onMessage: { addListener: (listener) => { receiveMessage = listener; } },
       async sendMessage(message) {
@@ -239,6 +241,56 @@ test("Popular still pauses on a refusal and waits for an explicit save after reo
   await tick();
   assert.equal(reloaded.status().status, "done");
   assert.equal(reloaded.requests.length, 1);
+});
+
+test("The queue waits for local acknowledgement and rechecks the page before clicking Next", async () => {
+  let clicks = 0;
+  let finishSave;
+  const pendingSave = new Promise((resolve) => { finishSave = resolve; });
+  const nextControl = {
+    matches: () => true, closest: () => null, getAttribute: () => null,
+    getClientRects: () => [{}], click: () => { clicks += 1; }
+  };
+  const tab = createTab({ nextControl, onCapture: () => pendingSave });
+  const snapshot = () => tab.message({ type: "LATAM_QUEUE_STATUS" });
+  const next = (receiptId) => tab.message({ type: "LATAM_QUEUE_NEXT", scope: "search:test", receiptId });
+  assert.equal(next().action, "pause");
+  await tab.loadList(products(123));
+  const { receipt } = snapshot();
+  assert.equal(receipt.phase, "saving");
+  assert.equal(next(receipt.id).action, "pause");
+  assert.equal(clicks, 0);
+
+  finishSave({ ok: true, result: { products: 1, new_products: 1 } });
+  await tick();
+  assert.equal(snapshot().receipt.phase, "saved");
+  assert.equal(snapshot().receipt.added, 1);
+  assert.equal(next("stale-page").action, "pause");
+  assert.equal(next(receipt.id).action, "clicked");
+  assert.equal(clicks, 1);
+
+  tab.changeText(pageUnavailable);
+  const paused = next(receipt.id);
+  assert.equal(paused.action, "pause");
+  assert.equal(paused.needsReview, true);
+  assert.equal(clicks, 1);
+  assert.equal(tab.requests.length, 1);
+});
+
+test("An explicit queue restart after manual recovery saves the already loaded list", async () => {
+  const tab = createTab();
+  await tab.loadList(response({}, { status: 429 }));
+  const reloaded = createTab({ storage: tab.storage, onCapture: () => ({ ok: true, result: { products: 1 } }) });
+  const prepare = () => reloaded.message({ type: "LATAM_QUEUE_PREPARE", scope: "search:test" });
+  assert.equal(prepare().ok, false);
+  await reloaded.loadList(products(1));
+  assert.equal(reloaded.captured.length, 0);
+  assert.equal(prepare().ok, true);
+  await tick();
+  assert.equal(reloaded.message({ type: "LATAM_QUEUE_STATUS" }).receipt.phase, "saved");
+  assert.equal(reloaded.requests.length, 1);
+  await reloaded.loadList(products(2));
+  assert.equal(reloaded.captured.length, 2);
 });
 
 async function createPopup(tab) {

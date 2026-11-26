@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LatAmCollector Brazil Helper",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "description": "Capture public Shopee and SHEIN Brazil product lists, sales and reviews into the local LatAmCollector platform.",
   "permissions": ["storage", "tabs"],
   "host_permissions": [
@@ -27,7 +27,7 @@
     },
     {
       "matches": ["https://shopee.com.br/*", "https://*.shopee.com.br/*", "https://br.shein.com/*", "https://*.br.shein.com/*"],
-      "js": ["bridge.js"],
+      "js": ["queue_core.js", "bridge.js"],
       "run_at": "document_start"
     }
   ]

@@ -37,6 +37,7 @@
   let shopeeCaptureId = 0;
   let shopeeBlocked = false;
   let shopeeCheckpoint = null;
+  let heldSearchList = null;
   let shopeeController = null;
   const passiveSheinFingerprints = new Map();
   let domTimer = 0;
@@ -96,6 +97,7 @@
         /verifi(?:que|car) (?:se|que) você é humano|verify (?:that )?you are human/.test(message)) {
       return "要求人工验证";
     }
+    if (/^\/(?:buyer\/)?(?:login|signin)(?:\/|$)/i.test(path)) return "要求登录";
     return "";
   }
 
@@ -261,10 +263,11 @@
     }
   }
 
-  function sendCapture(url, payload, captureId) {
+  function sendCapture(url, payload, captureId, pageUrl = currentPage()) {
     document.dispatchEvent(new CustomEvent(EVENT_NAME, {
       detail: JSON.stringify({
-        source_url: String(url), captured_at: new Date().toISOString(), payload, capture_id: captureId
+        source_url: String(url), captured_at: new Date().toISOString(), payload, capture_id: captureId,
+        page_url: pageUrl
       })
     }));
   }
@@ -273,7 +276,7 @@
     if (!category || shopeeBlocked || category.status === "running" || category.status === "done") return;
     category.captureId = ++shopeeCaptureId;
     category.status = "running";
-    sendCapture(category.url, category.payload, category.captureId);
+    sendCapture(category.url, category.payload, category.captureId, category.pageUrl);
   }
 
   function rememberShopeeCategory(url, payload) {
@@ -342,9 +345,14 @@
         rememberSearch(url, payload);
         if (rememberShopeeCategory(url, payload)) return;
       }
-      if (shopeeCheckpoint) return;
+      if (shopeeCheckpoint) {
+        if (hasShopeeSearch() && page === currentPage() && isShopeeSearchUrl(url) && productCount(payload)) {
+          heldSearchList = { url, payload, page };
+        }
+        return;
+      }
     }
-    sendCapture(url, payload);
+    sendCapture(url, payload, undefined, page);
   }
 
   function delay(milliseconds) {
@@ -748,6 +756,20 @@
     else emitBulkStatus("error", { message: "请先打开 Shopee 或 SHEIN 巴西站商品列表" });
   }
 
+  function prepareShopeeQueue() {
+    const issue = currentShopeeIssue();
+    if (issue) stopShopee(issue);
+    if (shopeeBlocked || bulkRunning) return;
+    const category = currentShopeeCategory();
+    const search = heldSearchList?.page === currentPage() ? heldSearchList : null;
+    if (!category && !search) return;
+    shopeeCheckpoint = null;
+    heldSearchList = null;
+    try { sessionStorage.removeItem(SHOPEE_STOP_KEY); } catch (_) {}
+    if (category) saveShopeeCategory(category);
+    else sendCapture(search.url, search.payload, undefined, search.page);
+  }
+
   document.addEventListener(BULK_COMMAND_EVENT, (event) => {
     try {
       const command = JSON.parse(event.detail || "{}");
@@ -762,6 +784,8 @@
         const issue = currentShopeeIssue();
         if (issue) stopShopee(issue);
         if (!bulkRunning) saveShopeeCategory(currentShopeeCategory());
+      } else if (command.action === "queue_prepare" && platformFromUrl(location.href) === "shopee") {
+        prepareShopeeQueue();
       } else if (command.action === "stop") {
         if (shopeeBlocked || shopeeCheckpoint) return;
         bulkRunning = false;

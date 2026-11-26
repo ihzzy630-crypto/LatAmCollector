@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shopee 批量采集 · LatAm Collector</title>
+  <link rel="stylesheet" href="queue.css">
+  <script defer src="queue_core.js"></script>
+  <script defer src="queue_keywords.js"></script>
+  <script defer src="queue.js"></script>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div>
+        <p class="brand">LatAm Collector</p>
+        <h1>Shopee 批量采集</h1>
+        <p class="muted">把巴西站的分类和葡语搜索词加入队列，逐个翻页并保存到本地选品雷达。</p>
+      </div>
+      <a class="button" href="http://127.0.0.1:8765/" target="_blank" rel="noopener">打开选品雷达 ↗</a>
+    </header>
+
+    <div class="sources">
+      <section class="panel" aria-labelledby="category-title">
+        <div class="section-title">
+          <h2 id="category-title">分类与子类</h2>
+          <a href="https://shopee.com.br/" target="_blank" rel="noopener">打开 Shopee 巴西站 ↗</a>
+        </div>
+        <p class="muted">在 Shopee 打开分类页，展开「Mais」后，可读取页面上已出现的子类链接。</p>
+        <div class="actions">
+          <button id="discover" data-edit type="button">读取已打开的分类</button>
+          <button id="add-categories" data-edit type="button" disabled>添加选中</button>
+        </div>
+        <p id="discovery-feedback" class="muted feedback" role="status"></p>
+        <div id="category-choices" class="choices" aria-label="发现的分类"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="keyword-title">
+        <h2 id="keyword-title">葡语搜索词</h2>
+        <div class="actions">
+          <select id="keyword-group" data-edit aria-label="关键词分组"></select>
+          <button id="add-group" data-edit type="button">添加这组</button>
+          <button id="add-all" data-edit type="button">添加全部预设</button>
+        </div>
+        <label class="input-label" for="custom">自定义搜索词或 Shopee 分类／搜索链接，每行一个</label>
+        <textarea id="custom" data-edit rows="3" placeholder="organizador de gaveta"></textarea>
+        <div class="actions">
+          <button id="add-custom" data-edit type="button">添加输入内容</button>
+          <span id="edit-feedback" class="muted feedback" role="status"></span>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel queue-panel" aria-labelledby="queue-title">
+      <div class="section-title">
+        <h2 id="queue-title">采集队列</h2>
+        <button id="clear-done" data-edit class="quiet" type="button">清理已完成</button>
+      </div>
+      <div class="options">
+        <label for="page-limit">每个入口最多 <input id="page-limit" data-edit type="number" min="1" max="50" value="4"> 页</label>
+        <label class="check"><input id="include-children" data-edit type="checkbox" checked> 自动加入列表中发现的子类</label>
+      </div>
+      <div class="run-toolbar">
+        <div class="actions">
+          <button id="start" class="primary" type="button" disabled>一键开始</button>
+          <button id="pause" type="button" disabled>暂停</button>
+          <button id="show-worker" type="button" disabled>查看采集页</button>
+        </div>
+        <p id="queue-stats" class="muted"></p>
+      </div>
+      <div id="queue-status" class="status" role="status">等待读取队列</div>
+      <p class="muted small">保持此标签页和本地平台运行。遇到验证或访问受限时，处理当前采集页后再点继续。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">采集入口</th><th scope="col">状态</th><th scope="col">页数</th><th scope="col">入库条次</th><th scope="col">新增商品</th><th scope="col">操作</th></tr></thead>
+          <tbody id="entries"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
