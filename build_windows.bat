@@ -9,7 +9,7 @@ call .buildvenv\Scripts\python.exe -m pip install --upgrade pip
 call .buildvenv\Scripts\python.exe -m pip install -r requirements.txt
 if errorlevel 1 goto :error
 echo [3/4] 生成 Windows EXE...
-call .buildvenv\Scripts\pyinstaller.exe --noconfirm --clean --onefile --name LatAmCollector --add-data "static;static" --add-data "chrome_extension;chrome_extension" launcher.py
+call .buildvenv\Scripts\pyinstaller.exe --noconfirm --clean --onefile --windowed --name LatAmCollector --add-data "static;static" --add-data "chrome_extension;chrome_extension" launcher.py
 if errorlevel 1 goto :error
 echo [4/4] 完成。
 echo EXE 文件位置: %CD%\dist\LatAmCollector.exe

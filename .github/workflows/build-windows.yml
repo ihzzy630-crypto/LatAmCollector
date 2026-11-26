@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -27,15 +27,39 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          architecture: x64
           cache: pip
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --onefile --name LatAmCollector --add-data "static;static" --add-data "chrome_extension;chrome_extension" launcher.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name LatAmCollector --add-data "static;static" --add-data "chrome_extension;chrome_extension" launcher.py
 
-      - name: Upload Windows package
+      - name: Build Windows installer
+        shell: powershell
+        run: |
+          $version = (Get-Content chrome_extension/manifest.json -Raw | ConvertFrom-Json).version
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler)) { throw 'Inno Setup compiler was not found on this runner.' }
+          & $compiler "/DAppVersion=$version" windows/LatAmCollector.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify installing and reinstalling
+        shell: powershell
+        run: |
+          $setups = @(Get-ChildItem dist/LatAmCollector-Setup-*-x64.exe)
+          if ($setups.Count -ne 1) { throw 'Expected one Windows installer.' }
+          & .\windows\verify-install.ps1 -SetupFile $setups[0].FullName
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LatAmCollector-Windows-Setup
+          path: dist/LatAmCollector-Setup-*-x64.exe
+          if-no-files-found: error
+
+      - name: Upload standalone executable
         uses: actions/upload-artifact@v4
         with:
           name: LatAmCollector-Windows

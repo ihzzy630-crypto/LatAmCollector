@@ -4,9 +4,14 @@
 
 Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的公开商品与评论响应，并发送到本机平台，不读取密码或请求头。
 
-v0.3.1 起，安装器会创建 Windows 登录时的静默启动项。桌面快捷方式会自动检查并启动本地服务，不再要求长期保留 PowerShell 窗口。
+## Windows EXE 安装
 
-## PowerShell 一键安装（推荐）
+1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.6.0/LatAmCollector-Setup-0.6.0-x64.exe)。安装包含运行环境、选品雷达和 Chrome 采集助手。
+2. 已安装过的用户选择原来的安装目录。安装器会识别 `D:\gpt专用文件\LatAmCollector`，每台电脑在各自安装目录的 `data` 文件夹存放商品库。
+3. 双击桌面的 **LatAmCollector** 打开选品雷达。需要 Windows 登录时启动服务，可在安装过程中勾选自动启动。
+4. 在 Chrome 按下文加载安装目录里的扩展文件夹。开始菜单的 **Chrome Helper Folder** 打开该目录。
+
+## PowerShell 一键安装
 
 以普通方式打开 Windows PowerShell，依次运行：
 
@@ -33,11 +38,9 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 ## 生成 EXE
 
-双击 `build_windows.bat`。完成后程序位于：
+双击 `build_windows.bat` 后，独立程序位于 `dist\LatAmCollector.exe`。将它放入单独文件夹运行，程序会在 EXE 旁创建 `data` 文件夹。
 
-`dist\LatAmCollector.exe`
-
-将 EXE 放在一个单独文件夹中运行。程序会在 EXE 旁创建 `data` 文件夹，所有本地数据库都保存在其中。
+在安装了 Inno Setup 6 的 Windows 上，用 `ISCC.exe windows\LatAmCollector.iss` 打包生成安装器。GitHub Actions 会在 Windows 构建并验证安装器。
 
 ## 当前能力
 
@@ -65,7 +68,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 1. 在 Chrome 打开 `chrome://extensions`。
 2. 打开右上角“开发者模式”。
 3. 点击“加载已解压的扩展程序”。
-4. 选择 `D:\gpt专用文件\LatAmCollector\chrome_extension`。
+4. 选择 LatAmCollector 安装目录下的 `chrome_extension` 文件夹。
 5. 保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站页面。
 
 Chrome 助手 v0.6.0 的「Shopee 子类和关键词批量采集」支持从已打开的巴西站页面读取分类链接、按组添加 160 个葡语搜索词，以及批量粘贴自定义词和 Shopee 列表链接。开启「自动加入列表中发现的子类」后，助手会把当前页面公开链接中可识别的下级分类追加到队列。

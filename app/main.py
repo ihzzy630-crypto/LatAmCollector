@@ -7,10 +7,13 @@ import math
 import os
 import shutil
 import sqlite3
+import socket
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime, timezone
+from http.client import HTTPConnection, HTTPException as HTTPClientError
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -25,6 +28,11 @@ from .database import DB_PATH, add_log, connect, initialize, normalize_existing_
 from .parser import detect_platform, parse_products, parse_reviews
 
 
+PLATFORM_HOST = "127.0.0.1"
+PLATFORM_PORT = 8765
+PLATFORM_URL = f"http://{PLATFORM_HOST}:{PLATFORM_PORT}"
+
+
 def resource_path(relative: str) -> Path:
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     return root / relative
@@ -37,8 +45,23 @@ def ensure_extension_files() -> None:
         return
     if getattr(sys, "frozen", False):
         target = Path(sys.executable).resolve().parent / "chrome_extension"
-        target.mkdir(parents=True, exist_ok=True)
+        bundled_version = extension_version(source)
+        installed_version = extension_version(target)
+        if installed_version > bundled_version:
+            return
+        if installed_version == bundled_version and all(
+            (target / file.relative_to(source)).is_file() for file in source.rglob("*") if file.is_file()
+        ):
+            return
         shutil.copytree(source, target, dirs_exist_ok=True)
+
+
+def extension_version(folder: Path) -> tuple[int, ...]:
+    try:
+        manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        return tuple(int(part) for part in manifest["version"].split("."))
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return ()
 
 
 def backfill_shopee_images() -> int:
@@ -793,18 +816,62 @@ def system_info():
     }
 
 
-def run(open_browser: bool = True) -> None:
-    initialize()
-    pid_file = DB_PATH.parent / "server.pid"
-    pid_file.write_text(str(os.getpid()), encoding="ascii")
-    if open_browser:
-        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
-    try:
-        uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
-    finally:
+def use_running_platform(open_browser: bool) -> None:
+    deadline = time.monotonic() + 12
+    while time.monotonic() < deadline:
+        connection = HTTPConnection(PLATFORM_HOST, PLATFORM_PORT, timeout=0.5)
         try:
-            if pid_file.exists() and pid_file.read_text(encoding="ascii").strip() == str(os.getpid()):
-                pid_file.unlink()
+            connection.request("GET", "/api/system")
+            response = connection.getresponse()
+            if response.status != 200:
+                break
+            details = json.loads(response.read(65536))
+        except (HTTPClientError, OSError, UnicodeError, ValueError):
+            time.sleep(0.25)
+            continue
+        finally:
+            connection.close()
+        if not isinstance(details, dict) or not isinstance(details.get("database"), str) or not details.get("connectors"):
+            break
+        if Path(details["database"]).resolve() != DB_PATH.resolve():
+            raise RuntimeError("另一套 LatAmCollector 正在运行。请关闭该服务，或使用它的安装目录。")
+        if open_browser:
+            webbrowser.open(PLATFORM_URL)
+        return
+    raise RuntimeError(f"本地端口 {PLATFORM_PORT} 已被占用，请关闭占用该端口的程序后重试。")
+
+
+def run(open_browser: bool = True) -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        if os.name != "nt":
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            listener.bind((PLATFORM_HOST, PLATFORM_PORT))
         except OSError:
-            pass
+            use_running_platform(open_browser)
+            return
+
+        server = uvicorn.Server(uvicorn.Config(app, host=PLATFORM_HOST, port=PLATFORM_PORT, log_level="warning"))
+        pid_file = DB_PATH.parent / "server.pid"
+        pid = str(os.getpid())
+        pid_file.write_text(pid, encoding="ascii")
+
+        def open_when_ready() -> None:
+            while not server.started and not server.should_exit:
+                time.sleep(0.1)
+            if server.started and not server.should_exit:
+                webbrowser.open(PLATFORM_URL)
+
+        if open_browser:
+            threading.Thread(target=open_when_ready, daemon=True).start()
+        try:
+            server.run(sockets=[listener])
+            if not server.started:
+                raise RuntimeError("本地服务没有完成启动。")
+        finally:
+            try:
+                if pid_file.read_text(encoding="ascii").strip() == pid:
+                    pid_file.unlink()
+            except OSError:
+                pass
 
