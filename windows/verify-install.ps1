@@ -58,7 +58,7 @@ try {
     if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*/static/app.js*') {
         throw 'The updated radar page is missing.'
     }
-    foreach ($asset in @('app.css', 'app.js')) {
+    foreach ($asset in @('app.css', 'app.js', 'review_tools.js')) {
         $response = Invoke-WebRequest -Uri "$url/static/$asset" -UseBasicParsing -TimeoutSec 5
         if ($response.StatusCode -ne 200 -or $response.RawContentLength -lt 100) {
             throw "The installed app could not serve $asset."
@@ -76,6 +76,25 @@ try {
     } | ConvertTo-Json -Depth 5
     $capture = Invoke-RestMethod -Uri "$url/api/capture" -Method Post -ContentType 'application/json' -Body $fixture
     if ($capture.new_products -ne 1) { throw 'The installed app could not save the test product.' }
+
+    $ratingFixture = @{
+        source_url = 'https://shopee.com.br/api/v2/item/get_ratings?shopid=12&itemid=441'
+        page_url = 'https://shopee.com.br/product/12/441'
+        payload = @{data = @{ratings = @(@{cmtid = 701; rating_star = 5; comment = 'O produto foi entregue rapidamente.'})}}
+    } | ConvertTo-Json -Depth 6
+    $rating = Invoke-RestMethod -Uri "$url/api/capture" -Method Post -ContentType 'application/json' -Body $ratingFixture
+    if ($rating.review_batch.item_id -ne '441') { throw 'The installed app did not link the review to its product.' }
+    $translationUrl = "$url/api/products/1/review-translation"
+    $queued = Invoke-RestMethod -Uri $translationUrl -Method Post -ContentType 'application/json' -Body '{}'
+    if (-not $queued.models_ready) { throw 'The Windows installer did not include its offline models.' }
+    $deadline = [DateTime]::UtcNow.AddSeconds(75)
+    do {
+        $translation = Invoke-RestMethod -Uri $translationUrl -TimeoutSec 5
+        if ($translation.state -eq 'error') { throw "Offline translation failed: $($translation.error)" }
+        if ($translation.translated -eq 1) { break }
+        Start-Sleep -Milliseconds 800
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($translation.translated -ne 1) { throw "Offline translation timed out in state $($translation.state)." }
     Stop-TestService $service
     $service = $null
 
@@ -84,6 +103,11 @@ try {
     Wait-For-Service | Out-Null
     $stats = Invoke-RestMethod -Uri "$url/api/stats"
     if ($stats.products -ne 1) { throw 'Reinstalling did not preserve the product library.' }
+    $reviews = Invoke-WebRequest -Uri "$url/api/reviews?product_id=1&all_years=true" -UseBasicParsing
+    $reviewData = [Text.Encoding]::UTF8.GetString($reviews.RawContentStream.ToArray()) | ConvertFrom-Json
+    if ($reviewData.total -ne 1 -or $reviewData.items[0].translation -notmatch '[\u4e00-\u9fff]') {
+        throw 'The Chinese review translation was not preserved after reinstalling.'
+    }
     Stop-TestService $service
     $service = $null
 
@@ -93,7 +117,7 @@ try {
         throw 'The uninstaller did not remove the app and preserve the product library.'
     }
     $verified = $true
-    Write-Host 'Verified Windows installation, shortcuts, Chrome files, startup, capture, reinstall and uninstall.'
+    Write-Host 'Verified Windows installation, shortcuts, Chrome files, scoped review capture, offline translation, reinstall and uninstall.'
 }
 finally {
     Stop-TestService $service

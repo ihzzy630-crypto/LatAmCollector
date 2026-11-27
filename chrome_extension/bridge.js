@@ -5,10 +5,19 @@
   const BULK_COMMAND_EVENT = "LATAM_COLLECTOR_BULK_COMMAND_V1";
   const BULK_STATUS_EVENT = "LATAM_COLLECTOR_BULK_STATUS_V1";
   const queue = globalThis.LatAmQueue;
+  const reviews = globalThis.LatAmReviews;
   let pageStatus = null;
   let listReceipt = null;
   let listSequence = 0;
   let retryCapture = null;
+  const reviewReceipts = [];
+  let reviewSequence = 0;
+  let reviewIssue = "";
+  globalThis.LatAmReviewObserver = {
+    get sequence() { return reviewSequence; },
+    get receipts() { return reviewReceipts; },
+    get issue() { return reviewIssue; }
+  };
 
   function dispatchCommand(command) {
     document.dispatchEvent(new CustomEvent(BULK_COMMAND_EVENT, { detail: JSON.stringify(command) }));
@@ -33,6 +42,13 @@
 
   async function forwardCapture(data) {
     const { capture_id: captureId, page_url: pageUrl, ...capture } = data;
+    const reviewing = reviews?.productPage(pageUrl);
+    let reviewReceipt = null;
+    if (reviewing && reviews.sameProduct(location.href, reviewing) && reviews.reviewListResponse(capture.source_url)) {
+      reviewReceipt = { sequence: ++reviewSequence, phase: "saving", batch: null };
+      reviewReceipts.push(reviewReceipt);
+      if (reviewReceipts.length > 16) reviewReceipts.shift();
+    }
     const list = queue?.listingReceipt(capture.source_url, pageUrl, capture.payload);
     let observation = null;
     const currentScope = queue?.listingEntry(globalThis.location?.href)?.scope;
@@ -45,9 +61,13 @@
     }
     let products = 0;
     try {
-      const response = await chrome.runtime.sendMessage({ type: "LATAM_CAPTURE", data: capture });
+      const response = await chrome.runtime.sendMessage({ type: "LATAM_CAPTURE", data: { ...capture, page_url: pageUrl } });
       if (response?.ok) {
         products = Number(response.result?.products) || 0;
+        if (reviewReceipt) {
+          reviewReceipt.batch = response.result?.review_batch;
+          reviewReceipt.phase = reviewReceipt.batch ? "saved" : "unlinked";
+        }
         if (observation) {
           observation.saved = products;
           observation.added = Number(response.result?.new_products) || 0;
@@ -59,6 +79,7 @@
       // A reloaded extension or unavailable local service might not respond.
     }
     if (observation?.phase === "saving") observation.phase = "error";
+    if (reviewReceipt?.phase === "saving") reviewReceipt.phase = "error";
     if (Number.isSafeInteger(captureId)) {
       document.dispatchEvent(new CustomEvent(CAPTURE_RESULT_EVENT, {
         detail: JSON.stringify({ captureId, products })
@@ -78,6 +99,16 @@
       forwardCapture(data);
     } catch (_) {
       // Discard malformed page events.
+    }
+  });
+
+  document.addEventListener("LATAM_COLLECTOR_REVIEW_ISSUE_V1", (event) => {
+    try {
+      const data = JSON.parse(event.detail);
+      const page = reviews?.productPage(data.page);
+      if (page && reviews.sameProduct(location.href, page)) reviewIssue = String(data.message || "").slice(0, 180);
+    } catch {
+      // Ignore incomplete observations.
     }
   });
 

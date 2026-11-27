@@ -24,15 +24,17 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 
+from . import review_translation
 from .categories import CATEGORY_GROUPS, CATEGORY_ORIGIN_RANK, CATEGORIES, classify_stored_product
 from .database import DB_PATH, add_log, connect, initialize, normalize_existing_categories
 from .parser import detect_platform, parse_products, parse_reviews
+from .review_capture import reconcile_review_identity, review_target
 
 
 PLATFORM_HOST = "127.0.0.1"
 PLATFORM_PORT = 8765
 PLATFORM_URL = f"http://{PLATFORM_HOST}:{PLATFORM_PORT}"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 
 def resource_path(relative: str) -> Path:
@@ -478,8 +480,9 @@ def reviews(
         total = db.execute("SELECT COUNT(*) FROM reviews r WHERE " + clause, values).fetchone()[0]
         page = min(page, max(1, (total + page_size - 1) // page_size))
         rows = db.execute(
-            """SELECT r.*, p.id AS product_id, p.title FROM reviews r
+            """SELECT r.*, p.id AS product_id, p.title, t.translated_text AS translation FROM reviews r
                LEFT JOIN products p ON p.platform=r.platform AND p.item_id=r.item_id AND p.shop_id=r.shop_id
+               LEFT JOIN review_translations t ON t.review_id=r.id AND t.source_text=r.comment
                WHERE """ + clause + " ORDER BY r.review_time DESC, r.id DESC LIMIT ? OFFSET ?",
             values + [page_size, (page - 1) * page_size],
         ).fetchall()
@@ -522,7 +525,28 @@ def review_insights(filters: Annotated[tuple[str, list[Any]], Depends(review_que
     }
 
 
-def import_payload(payload: dict[str, Any], source: str = "数据导入", source_url: str = "") -> dict[str, Any]:
+@app.get("/api/products/{product_id}/review-keywords")
+def product_review_keywords(product_id: int):
+    product_detail(product_id)
+    return {"keywords": review_translation.keywords(product_id)}
+
+
+@app.get("/api/products/{product_id}/review-translation")
+def review_translation_status(product_id: int):
+    product_detail(product_id)
+    return review_translation.status(product_id)
+
+
+@app.post("/api/products/{product_id}/review-translation")
+def translate_product_reviews(product_id: int):
+    product_detail(product_id)
+    review_translation.enqueue(product_id)
+    return review_translation.status(product_id)
+
+
+def import_payload(
+    payload: dict[str, Any], source: str = "数据导入", source_url: str = "", *, page_url: str = "",
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(400, "JSON 顶层必须是对象")
     host = (urlparse(source_url).hostname or "").lower() if source_url else ""
@@ -535,6 +559,8 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
     products_found = parse_products(payload, platform)
     reviews_found = parse_reviews(payload, platform)
     new_products = updated_products = new_reviews = updated_reviews = 0
+    saved_review_ids: set[str] = set()
+    batch = None
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         for p in products_found:
@@ -611,12 +637,16 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
                     raw_json=excluded.raw_json, imported_at=CURRENT_TIMESTAMP""",
                 p,
             )
+        target = review_target(db, source_url, page_url, payload) if reviews_found and page_url else None
         for r in reviews_found:
-            exists = db.execute(
-                "SELECT 1 FROM reviews WHERE platform=? AND review_id=?",
+            matches_target = target is not None and target.attach(r)
+            previous = db.execute(
+                "SELECT item_id, shop_id FROM reviews WHERE platform=? AND review_id=?",
                 (r["platform"], r["review_id"]),
             ).fetchone()
-            if exists:
+            if not reconcile_review_identity(r, previous):
+                continue
+            if previous:
                 updated_reviews += 1
             else:
                 new_reviews += 1
@@ -624,10 +654,20 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
                 """INSERT INTO reviews(platform,review_id,item_id,shop_id,rating,comment,variant,review_time,likes,media_count)
                    VALUES (:platform,:review_id,:item_id,:shop_id,:rating,:comment,:variant,:review_time,:likes,:media_count)
                    ON CONFLICT(platform,review_id) DO UPDATE SET
+                   item_id=excluded.item_id,shop_id=excluded.shop_id,
                    rating=excluded.rating,comment=excluded.comment,variant=excluded.variant,
                    review_time=excluded.review_time,likes=excluded.likes,media_count=excluded.media_count""",
                 r,
             )
+            if matches_target and (r["shop_id"], r["item_id"]) == (target.shop_id, target.item_id):
+                saved_review_ids.add(r["review_id"])
+        if target and saved_review_ids:
+            paging = payload.get("data")
+            last_page = isinstance(paging, dict) and (
+                paging.get("has_more") is False or paging.get("no_more") is True or paging.get("nomore") is True
+            )
+            batch = {"platform": target.platform, "shop_id": target.shop_id, "item_id": target.item_id,
+                     "ids": sorted(saved_review_ids), "last_page": last_page}
         lowered_source_url = source_url.lower()
         comment_markers = ("get_ratings", "/comment/", "goods_review", "goods_comment")
         detail_markers = ("item/get", "pdp/get_pc", "productdetail", "quickview", "detail_static", "detail_realtime")
@@ -638,22 +678,23 @@ def import_payload(payload: dict[str, Any], source: str = "数据导入", source
             """INSERT INTO capture_events(
                    source_type,source_url,product_count,review_count,new_product_count,new_review_count
                ) VALUES(?,?,?,?,?,?)""",
-            (source_type if source_url else source, source_url, len(products_found), len(reviews_found), new_products, new_reviews),
+            (source_type if source_url else source, source_url, len(products_found), new_reviews + updated_reviews, new_products, new_reviews),
         )
     message = (
         f"识别商品 {len(products_found)} 条（新增 {new_products}、更新 {updated_products}），"
-        f"评论 {len(reviews_found)} 条（新增 {new_reviews}、更新 {updated_reviews}）"
+        f"评论 {new_reviews + updated_reviews} 条（新增 {new_reviews}、更新 {updated_reviews}）"
     )
     add_log(source, message)
     return {
         "ok": True,
         "message": message,
         "products": len(products_found),
-        "reviews": len(reviews_found),
+        "reviews": new_reviews + updated_reviews,
         "new_products": new_products,
         "updated_products": updated_products,
         "new_reviews": new_reviews,
         "updated_reviews": updated_reviews,
+        "review_batch": batch,
     }
 
 
@@ -708,7 +749,8 @@ async def capture_from_chrome(request: Request):
         raise HTTPException(400, "不是已支持的数据接口")
     if not isinstance(payload, dict):
         raise HTTPException(400, "响应内容不是 JSON 对象")
-    result = import_payload(payload, f"Chrome采集助手/{platform}", source_url)
+    page_url = str(body.get("page_url") or "")
+    result = import_payload(payload, f"Chrome采集助手/{platform}", source_url, page_url=page_url)
     result["platform"] = platform
     result["source_url"] = source_url
     return result
@@ -790,7 +832,12 @@ def safe_cell(value: Any) -> Any:
 def export_rows(kind: str) -> tuple[list[str], list[dict[str, Any]]]:
     if kind == "reviews":
         columns = ["platform", "review_id", "item_id", "shop_id", "rating", "comment", "variant", "review_time", "likes", "media_count"]
-        query = "SELECT " + ",".join(columns) + " FROM reviews ORDER BY review_time DESC"
+        query = (
+            "SELECT " + ",".join("r." + column for column in columns) +
+            ",t.translated_text AS comment_zh FROM reviews r " + review_translation.TRANSLATION_JOIN +
+            " ORDER BY r.review_time DESC"
+        )
+        columns.append("comment_zh")
     else:
         columns = [
             "platform", "item_id", "shop_id", "title", "category", "price", "price_delta",
@@ -845,7 +892,7 @@ def system_info():
         "version": APP_VERSION,
         "database": str(DB_PATH),
         "connectors": {"shopee": "Chrome采集助手可用", "shein": "Chrome采集助手可用", "mercadolivre": "待开发"},
-        "features": ["Shopee/SHEIN 列表批量采集", "标准品类与手动改类", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "评论洞察"],
+        "features": ["Shopee/SHEIN 列表批量采集", "标准品类与手动改类", "Shopee 商品缩略图与历史补图", "SHEIN 自动滚动翻页", "暂停续采", "风控页安全停止", "静默伴随启动", "销量口径切换", "销量上下限", "数据可信度", "变化追踪", "选品参考分", "收藏备注", "单品评论自动采集", "评论关键词", "评论本机中文翻译"],
     }
 
 

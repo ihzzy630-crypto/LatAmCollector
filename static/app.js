@@ -533,6 +533,7 @@ function reviewItem(review) {
       ${date ? `<time class="muted small tabular" datetime="${date}">${date}</time>` : ""}
     </div>
     <p class="review-body"${review.comment?.trim() ? ' lang="pt-BR"' : ""}>${escapeHtml(review.comment?.trim() ? review.comment : "（无文字）")}</p>
+    ${review.translation && review.translation !== review.comment ? `<p class="translated-review" lang="zh-CN"><span>机器翻译</span> ${escapeHtml(review.translation)}</p>` : ""}
     <div class="review-meta">
       ${review.topics.map(topic => `<span class="pill">${escapeHtml(topic)}</span>`).join("")}
       ${review.variant ? `<span class="muted small">规格 · ${escapeHtml(review.variant)}</span>` : ""}
@@ -660,7 +661,7 @@ async function importFile(input) {
 const pageLoaders = {
   dashboard: loadAnalytics,
   products: () => loadProducts(products.page),
-  reviews: () => { loadReviewProduct(); loadReviews(reviews.page); },
+  reviews: () => { loadReviewProduct(); loadReviews(reviews.page); reviewTools.show(reviews.scope); },
   tasks: loadTasks,
   sources: loadCaptureStatus,
   logs: loadLogs
@@ -684,6 +685,7 @@ function renderRoute({ focus = false } = {}) {
   document.title = titles[currentPage] + " · LatAm Collector";
   byId("refresh-page").hidden = !pageLoaders[currentPage];
   updateSubtitle();
+  if (currentPage !== "reviews") reviewTools.show("");
   pageLoaders[currentPage]?.();
   if (focus) {
     title.focus({ preventScroll: true });

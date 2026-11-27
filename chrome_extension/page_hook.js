@@ -7,6 +7,7 @@
   const CAPTURE_RESULT_EVENT = "LATAM_COLLECTOR_CAPTURE_RESULT_V1";
   const BULK_COMMAND_EVENT = "LATAM_COLLECTOR_BULK_COMMAND_V1";
   const BULK_STATUS_EVENT = "LATAM_COLLECTOR_BULK_STATUS_V1";
+  const REVIEW_ISSUE_EVENT = "LATAM_COLLECTOR_REVIEW_ISSUE_V1";
   const SHOPEE_MARKERS = ["search_items", "recommend_v2", "get_ratings", "item/get", "pdp/get_pc"];
   const SHEIN_MARKERS = [
     "/api/productlist/info/get", "/api/productinfo/productdetail/get",
@@ -334,8 +335,29 @@
     } catch (_) {}
   });
 
+  function isReviewRequest(url) {
+    if (!isSupportedUrl(url)) return false;
+    const path = new URL(String(url), location.href).pathname.toLowerCase().replace(/\/$/, "");
+    return path.endsWith("/get_ratings") || path.endsWith("/abccommentinfo/query") ||
+      path.endsWith("/get_goods_comment_offset") || path.endsWith("/get_goods_review_detail");
+  }
+
+  function reviewIssue(page, message) {
+    document.dispatchEvent(new CustomEvent(REVIEW_ISSUE_EVENT, { detail: JSON.stringify({ page, message }) }));
+  }
+
+  function reviewHttpIssue(url, status, page) {
+    if (!isReviewRequest(url) || ![401, 403, 429].includes(status)) return false;
+    reviewIssue(page, status === 429 ? "平台评论请求过多（HTTP 429）" : "平台拒绝了评论请求（HTTP " + status + "）");
+    return true;
+  }
+
   function publish(url, payload, page = currentPage()) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+    if (isReviewRequest(url) && ((payload.error && payload.error !== "0") || payload.success === false)) {
+      reviewIssue(page, "平台返回了评论读取错误");
+      return;
+    }
     const isShopee = platformFromUrl(location.href) === "shopee" && platformFromUrl(url) === "shopee";
     if (isShopee) {
       const issue = currentShopeeIssue() || shopeeListIssue(url, payload);
@@ -806,6 +828,7 @@
   });
 
   async function inspectFetchResponse(response, requestUrl, page) {
+    if (reviewHttpIssue(requestUrl, response.status, page)) return;
     const responseIssue = shopeeResponseIssue(requestUrl, response.url, response.status);
     if (responseIssue) return stopShopee(responseIssue);
     const onShopee = platformFromUrl(location.href) === "shopee" && platformFromUrl(response.url) === "shopee";
@@ -843,6 +866,7 @@
       this.addEventListener("load", () => {
         try {
           const finalUrl = this.responseURL || this.__latamCollectorUrl;
+          if (reviewHttpIssue(this.__latamCollectorUrl, this.status, page)) return;
           const responseIssue = shopeeResponseIssue(this.__latamCollectorUrl, finalUrl, this.status);
           if (responseIssue) return stopShopee(responseIssue);
           const onShopee = platformFromUrl(location.href) === "shopee" && platformFromUrl(finalUrl) === "shopee";

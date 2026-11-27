@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.7.0"
+  #define AppVersion "0.8.0"
 #endif
 
 [Setup]
@@ -33,6 +33,7 @@ Name: "autostart"; Description: "Start the local service when I sign in to Windo
 [Files]
 Source: "dist\LatAmCollector.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "chrome_extension\*"; DestDir: "{app}\chrome_extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "build\review_models\*"; DestDir: "{app}\review_models"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "windows\Windows-Guide.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 

@@ -377,6 +377,14 @@ tbody tr:hover { background: #f8fbf8; }
 .review-product-text h2 { overflow-wrap: anywhere; font-size: 15px; }
 .review-context-details { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .review-product > .actions { justify-content: flex-end; flex-shrink: 0; }
+.review-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 17px; }
+.review-controls p, #review-keyword-panel .panel-head p { margin-top: 4px; }
+.review-keywords { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr)); gap: 8px; margin-top: 12px; }
+.review-keyword { display: grid; align-content: start; gap: 3px; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere; }
+.review-keyword strong { font-size: 13px; }
+.review-keyword .keyword-negative { color: var(--bad); }
+.translated-review { border-left: 2px solid #8fb7a2; background: #f3f8f4; padding: 7px 10px; border-radius: 0 7px 7px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.translated-review span { color: var(--accent); font-size: 11px; font-weight: 650; margin-right: 5px; }
 .review-overview { grid-template-columns: 1.1fr 1fr; }
 .rating-grid { display: grid; grid-template-columns: minmax(90px, .65fr) minmax(0, 1.6fr); align-items: center; gap: 14px; }
 .rating-hero strong { display: block; font-size: clamp(33px, 4vw, 46px); line-height: 1.1; letter-spacing: -.05em; }

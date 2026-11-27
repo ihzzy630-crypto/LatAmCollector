@@ -86,6 +86,17 @@ def initialize() -> None:
                 UNIQUE(platform, review_id)
             );
 
+            CREATE TABLE IF NOT EXISTS review_translations (
+                review_id INTEGER PRIMARY KEY REFERENCES reviews(id) ON DELETE CASCADE,
+                source_text TEXT NOT NULL,
+                translated_text TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS review_keyword_translations (
+                source_text TEXT PRIMARY KEY,
+                translated_text TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

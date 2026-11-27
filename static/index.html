@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LatAm Collector</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.7.0">
-  <script src="/static/app.js?v=0.7.0" defer></script>
+  <link rel="stylesheet" href="/static/app.css?v=0.8.0">
+  <script src="/static/review_tools.js?v=0.8.0" defer></script>
+  <script src="/static/app.js?v=0.8.0" defer></script>
 </head>
 <body>
   <div class="layout">
@@ -165,6 +166,18 @@
       <section id="reviews" class="page" aria-labelledby="page-title" hidden>
         <section id="review-product" class="panel review-product" aria-label="当前商品" hidden></section>
 
+        <section id="review-collection" class="panel review-controls" aria-labelledby="review-collection-title" hidden>
+          <div>
+            <h2 id="review-collection-title">评论采集</h2>
+            <p id="review-job-status" class="muted small" role="status">正在连接 Chrome 采集助手…</p>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" id="review-open-tab" type="button" hidden>查看采集页</button>
+            <button class="btn secondary" id="review-stop" type="button" hidden>暂停</button>
+            <button class="btn" id="review-start" type="button" disabled>开始采集评论</button>
+          </div>
+        </section>
+
         <form id="review-filter" class="panel filter-panel" aria-label="评论筛选">
           <div class="filter-grid review-primary">
             <div class="field"><label for="review-q">评论原文</label><input id="review-q" type="search" placeholder="葡萄牙语关键词"></div>
@@ -199,6 +212,17 @@
             <div class="panel-body" id="review-insights"><p class="empty">正在读取评论主题…</p></div>
           </section>
         </div>
+
+        <section id="review-keyword-panel" class="panel" aria-labelledby="review-keyword-title" hidden>
+          <div class="panel-head">
+            <div><h2 id="review-keyword-title">评论关键词</h2><p class="muted small">从该商品的已入库评论统计</p></div>
+            <button class="btn secondary" id="review-translate" type="button" hidden>翻译已入库评论</button>
+          </div>
+          <div class="panel-body">
+            <p id="review-translation-status" class="muted small" role="status">正在检查中文翻译…</p>
+            <div id="review-keywords" class="review-keywords"></div>
+          </div>
+        </section>
 
         <section class="panel" aria-labelledby="review-list-title">
           <div class="panel-head"><div class="results-heading"><h2 id="review-list-title">评论原文</h2><span class="count" id="review-total" role="status">正在读取…</span></div></div>

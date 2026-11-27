@@ -1,5 +1,7 @@
 "use strict";
 
+importScripts("review_core.js", "review_jobs.js");
+
 const API_URL = "http://127.0.0.1:8765/api/capture";
 
 async function updateState(result) {
