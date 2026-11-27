@@ -1,0 +1,179 @@
+name: Check clean Windows reinstall
+
+on:
+  push:
+    branches: [codex/clean-reinstall-v080]
+
+permissions:
+  contents: read
+
+jobs:
+  reinstall:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        previous: [native, mixed]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        if: matrix.previous == 'mixed'
+        with:
+          python-version: '3.12'
+      - name: Replace the old app and check the original library
+        shell: powershell
+        env:
+          PREVIOUS: ${{ matrix.previous }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $PWD 'windows\LatAmCollector-Clean-Reinstall.ps1'
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors.Message -join [Environment]::NewLine) }
+
+          function Wait-ForPlatform([string]$expectedVersion) {
+              $deadline = [DateTime]::UtcNow.AddSeconds(60)
+              do {
+                  try {
+                      $response = Invoke-WebRequest 'http://127.0.0.1:8765/api/system' -UseBasicParsing -TimeoutSec 2
+                      $result = [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()) | ConvertFrom-Json
+                      if ($result.version -eq $expectedVersion) { return $result }
+                  }
+                  catch {}
+                  Start-Sleep -Milliseconds 350
+              } while ([DateTime]::UtcNow -lt $deadline)
+              throw "The platform did not return version $expectedVersion"
+          }
+
+          $public = 'https://github.com/ihzzy630-crypto/LatAmCollector/releases/download'
+          $parent = Join-Path $env:RUNNER_TEMP ('Original app ' + [char]0x6D4B)
+          New-Item -ItemType Directory -Path $parent | Out-Null
+          $oldSetup = Join-Path $parent 'LatAmCollector-Setup-0.7.0-x64.exe'
+          & curl.exe --fail --location --retry 2 --output $oldSetup "$public/windows-v0.7.0/LatAmCollector-Setup-0.7.0-x64.exe"
+          if ($LASTEXITCODE) { throw 'Could not download the old installer' }
+
+          $root = Join-Path $parent 'LatAmCollector'
+          $db = Join-Path $root 'data\latam_collector.db'
+          $args = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=autostart', ('/DIR="' + $root + '"'))
+          $installed = Start-Process -FilePath $oldSetup -ArgumentList $args -Wait -PassThru
+          if ($installed.ExitCode) { throw "Old setup returned $($installed.ExitCode)" }
+          $oldExe = Join-Path $root 'LatAmCollector.exe'
+          $oldApp = Start-Process -FilePath $oldExe -ArgumentList '--no-browser' -PassThru
+          Wait-ForPlatform '0.7.0' | Out-Null
+
+          $product = @{
+              source_url = 'https://shopee.com.br/api/v4/search/search_items'
+              payload = @{items = @(@{itemid = 441; shopid = 12; name = 'Archived Caneta'; price = 3200000})}
+          } | ConvertTo-Json -Depth 5
+          $rating = @{
+              source_url = 'https://shopee.com.br/api/v2/item/get_ratings?shopid=12&itemid=441'
+              page_url = 'https://shopee.com.br/product/12/441'
+              payload = @{data = @{ratings = @(@{cmtid = 701; rating_star = 5; comment = 'Produto de boa qualidade.'})}}
+          } | ConvertTo-Json -Depth 6
+          foreach ($fixture in @($product, $rating)) {
+              Invoke-RestMethod 'http://127.0.0.1:8765/api/capture' -Method Post -ContentType 'application/json' -Body $fixture | Out-Null
+          }
+          $stats = Invoke-RestMethod 'http://127.0.0.1:8765/api/stats'
+          if ($stats.products -ne 1 -or $stats.reviews -ne 1) { throw 'The old library fixture is incomplete.' }
+
+          $target = $root
+          $targetParent = $parent
+          $expectedProduct = 'Archived Caneta'
+          if ($env:PREVIOUS -eq 'mixed') {
+              $pidFile = Join-Path $root 'data\server.pid'
+              $oldListener = Get-Process -Id ([int](Get-Content -LiteralPath $pidFile -Raw))
+              if ($oldListener.Path -ne $oldExe) { throw 'The old listener did not match the test executable.' }
+              Stop-Process -InputObject $oldListener
+              if (!$oldApp.WaitForExit(15000)) { throw 'The original executable did not exit.' }
+
+              $targetParent = Join-Path $env:RUNNER_TEMP ('Local source ' + [char]0x6D4B)
+              $target = Join-Path $targetParent 'LatAmCollector'
+              $data = Join-Path $target 'data'
+              New-Item -ItemType Directory -Path $data | Out-Null
+              foreach ($name in @('latam_collector.db', 'latam_collector.db-wal')) {
+                  $file = Join-Path (Split-Path -Parent $db) $name
+                  if (Test-Path -LiteralPath $file) { Copy-Item -LiteralPath $file -Destination $data }
+              }
+              $launcher = Join-Path $target 'launcher.py'
+              @'
+          import json
+          import os
+          import sqlite3
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from pathlib import Path
+
+          data = Path(__file__).resolve().parent / "data"
+          database = data / "latam_collector.db"
+          with sqlite3.connect(database) as connection:
+              connection.execute("UPDATE products SET title = ?", ("Primary Caneta",))
+          (data / "server.pid").write_text(str(os.getpid()), encoding="ascii")
+
+          class Platform(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = json.dumps(dict(version="0.7.1", database=str(database), connectors={"shopee": "enabled"}), ensure_ascii=False).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(body)
+
+          HTTPServer(("127.0.0.1", 8765), Platform).serve_forever()
+          '@ | Set-Content -LiteralPath $launcher -Encoding ASCII
+              $venv = Join-Path $target '.venv'
+              python -m venv --without-pip $venv
+              if ($LASTEXITCODE) { throw 'Could not create the source installation fixture.' }
+              Start-Process -FilePath (Join-Path $venv 'Scripts\python.exe') -ArgumentList ('"' + $launcher + '"') -WorkingDirectory $target
+              Wait-ForPlatform '0.7.1' | Out-Null
+              $expectedProduct = 'Primary Caneta'
+          }
+
+          $package = Join-Path $targetParent 'LatAmCollector-Chrome-v0.5.4.zip'
+          'old test package' | Set-Content -LiteralPath $package
+          Set-Location -LiteralPath $target
+          try {
+              & $script
+              $result = Wait-ForPlatform '0.8.0'
+              if ($result.database -ne (Join-Path $target 'data\latam_collector.db')) { throw 'The active database directory changed.' }
+              $products = Invoke-RestMethod 'http://127.0.0.1:8765/api/products'
+              if ($products.total -ne 1 -or $products.items[0].title -ne $expectedProduct) { throw 'The previous product was lost.' }
+              $reviews = Invoke-RestMethod 'http://127.0.0.1:8765/api/reviews?product_id=1&all_years=true'
+              if ($reviews.total -ne 1) { throw 'The previous review was lost.' }
+              foreach ($folder in @($parent, $targetParent) | Sort-Object -Unique) {
+                  $backup = @(Get-ChildItem -LiteralPath $folder -Filter 'LatAmCollector-Backup-*' -Directory)
+                  if ($backup.Count -ne 1 -or !(Test-Path (Join-Path $backup[0].FullName 'data\latam_collector.db'))) {
+                      throw "Missing database backup at $folder"
+                  }
+              }
+              if (Test-Path -LiteralPath $package) { throw 'The obsolete package was left in place.' }
+              if ($env:PREVIOUS -eq 'mixed') {
+                  if (Test-Path -LiteralPath $root) { throw 'The secondary installation still exists.' }
+                  if (Test-Path -LiteralPath (Join-Path $target '.venv')) { throw 'The obsolete Python environment is still in the installation directory.' }
+              }
+              $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'LatAmCollector-AutoStart.lnk'
+              $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($startup)
+              if (!$shortcut.TargetPath -or $shortcut.TargetPath -ne (Join-Path $target 'LatAmCollector.exe')) {
+                  throw 'The startup shortcut did not move to the clean installation.'
+              }
+              $current = Invoke-WebRequest 'http://127.0.0.1:8765' -UseBasicParsing
+              if ($current.Content -notlike '*id="review-start"*') { throw 'The review collection button is missing.' }
+              Write-Host "Verified the $env:PREVIOUS case with saved products and reviews, a clean app directory and current startup shortcut."
+          }
+          catch {
+              Get-ChildItem -LiteralPath $targetParent -Filter 'LatAmCollector-Backup-*' -Directory | ForEach-Object {
+                  $log = Join-Path $_.FullName 'install.log'
+                  if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 35 }
+              }
+              throw
+          }
+
+  attach:
+    needs: reinstall
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach the verified reinstall script
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload windows-v0.8.0 windows/LatAmCollector-Clean-Reinstall.ps1 --repo "$GITHUB_REPOSITORY"
