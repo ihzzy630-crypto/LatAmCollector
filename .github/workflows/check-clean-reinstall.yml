@@ -69,7 +69,7 @@ jobs:
           $rating = @{
               source_url = 'https://shopee.com.br/api/v2/item/get_ratings?shopid=12&itemid=441'
               page_url = 'https://shopee.com.br/product/12/441'
-              payload = @{data = @{ratings = @(@{cmtid = 701; rating_star = 5; comment = 'Produto de boa qualidade.'})}}
+              payload = @{data = @{ratings = @(@{cmtid = 701; itemid = 441; shopid = 12; ctime = 1768392000; rating_star = 5; comment = 'Produto de boa qualidade.'})}}
           } | ConvertTo-Json -Depth 6
           foreach ($fixture in @($product, $rating)) {
               Invoke-RestMethod 'http://127.0.0.1:8765/api/capture' -Method Post -ContentType 'application/json' -Body $fixture | Out-Null
