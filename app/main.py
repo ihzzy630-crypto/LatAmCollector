@@ -538,7 +538,9 @@ def review_translation_status(product_id: int):
 
 
 @app.post("/api/products/{product_id}/review-translation")
-def translate_product_reviews(product_id: int):
+def translate_product_reviews(product_id: int, request: Request):
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        raise HTTPException(415, "翻译请求须使用 JSON")
     product_detail(product_id)
     review_translation.enqueue(product_id)
     return review_translation.status(product_id)
