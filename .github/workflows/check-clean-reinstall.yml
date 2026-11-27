@@ -150,10 +150,14 @@ jobs:
                   if (Test-Path -LiteralPath (Join-Path $target '.venv')) { throw 'The obsolete Python environment is still in the installation directory.' }
               }
               $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'LatAmCollector-AutoStart.lnk'
-              $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($startup)
-              if (!$shortcut.TargetPath -or $shortcut.TargetPath -ne (Join-Path $target 'LatAmCollector.exe')) {
-                  throw 'The startup shortcut did not move to the clean installation.'
-              }
+              if (!(Test-Path -LiteralPath $startup -PathType Leaf)) { throw 'The startup shortcut was not restored.' }
+              $serverFile = Join-Path $target 'data\server.pid'
+              $server = Get-Process -Id ([int](Get-Content -LiteralPath $serverFile -Raw))
+              if ($server.Path -ne (Join-Path $target 'LatAmCollector.exe')) { throw 'The listener does not match the new executable.' }
+              Stop-Process -InputObject $server
+              if (!$server.WaitForExit(15000)) { throw 'The new service did not stop for the shortcut test.' }
+              Start-Process -FilePath $startup
+              if ((Wait-ForPlatform '0.8.0').database -ne $result.database) { throw 'The new startup shortcut opened the wrong library.' }
               $current = Invoke-WebRequest 'http://127.0.0.1:8765' -UseBasicParsing
               if ($current.Content -notlike '*id="review-start"*') { throw 'The review collection button is missing.' }
               Write-Host "Verified the $env:PREVIOUS case with saved products and reviews, a clean app directory and current startup shortcut."
