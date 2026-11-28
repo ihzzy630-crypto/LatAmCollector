@@ -1,8 +1,8 @@
-name: Check clean Windows reinstall
+name: Check clean Windows v0.9.0 reinstall
 
 on:
   push:
-    branches: [codex/clean-reinstall-v080]
+    branches: [codex/clean-reinstall-v090]
 
 permissions:
   contents: read
@@ -49,8 +49,8 @@ jobs:
           $public = 'https://github.com/ihzzy630-crypto/LatAmCollector/releases/download'
           $parent = Join-Path $env:RUNNER_TEMP ('Original app ' + [char]0x6D4B)
           New-Item -ItemType Directory -Path $parent | Out-Null
-          $oldSetup = Join-Path $parent 'LatAmCollector-Setup-0.7.0-x64.exe'
-          & curl.exe --fail --location --retry 2 --output $oldSetup "$public/windows-v0.7.0/LatAmCollector-Setup-0.7.0-x64.exe"
+          $oldSetup = Join-Path $parent 'LatAmCollector-Setup-0.8.1-x64.exe'
+          & curl.exe --fail --location --retry 2 --output $oldSetup "$public/windows-v0.8.1/LatAmCollector-Setup-0.8.1-x64.exe"
           if ($LASTEXITCODE) { throw 'Could not download the old installer' }
 
           $root = Join-Path $parent 'LatAmCollector'
@@ -60,7 +60,7 @@ jobs:
           if ($installed.ExitCode) { throw "Old setup returned $($installed.ExitCode)" }
           $oldExe = Join-Path $root 'LatAmCollector.exe'
           $oldApp = Start-Process -FilePath $oldExe -ArgumentList '--no-browser' -PassThru
-          Wait-ForPlatform '0.7.0' | Out-Null
+          Wait-ForPlatform '0.8.1' | Out-Null
 
           $product = @{
               source_url = 'https://shopee.com.br/api/v4/search/search_items'
@@ -76,6 +76,16 @@ jobs:
           }
           $stats = Invoke-RestMethod 'http://127.0.0.1:8765/api/stats'
           if ($stats.products -ne 1 -or $stats.reviews -ne 1) { throw 'The old library fixture is incomplete.' }
+          $translationUrl = 'http://127.0.0.1:8765/api/products/1/review-translation'
+          Invoke-RestMethod $translationUrl -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
+          $deadline = [DateTime]::UtcNow.AddSeconds(60)
+          do {
+              $state = Invoke-RestMethod $translationUrl -TimeoutSec 5
+              if ($state.translated -eq 1) { break }
+              if ($state.state -eq 'error') { throw 'Could not translate the original fixture.' }
+              Start-Sleep -Milliseconds 500
+          } while ([DateTime]::UtcNow -lt $deadline)
+          if ($state.translated -ne 1) { throw 'The old review translation did not complete.' }
 
           $target = $root
           $targetParent = $parent
@@ -127,17 +137,19 @@ jobs:
               $expectedProduct = 'Primary Caneta'
           }
 
-          $package = Join-Path $targetParent 'LatAmCollector-Chrome-v0.5.4.zip'
+          $package = Join-Path $targetParent 'LatAmCollector-Chrome-v0.8.1.zip'
           'old test package' | Set-Content -LiteralPath $package
           Set-Location -LiteralPath $target
           try {
-              & $script
-              $result = Wait-ForPlatform '0.8.0'
+              & ([scriptblock]::Create([IO.File]::ReadAllText($script)))
+              $result = Wait-ForPlatform '0.9.0'
               if ($result.database -ne (Join-Path $target 'data\latam_collector.db')) { throw 'The active database directory changed.' }
               $products = Invoke-RestMethod 'http://127.0.0.1:8765/api/products'
               if ($products.total -ne 1 -or $products.items[0].title -ne $expectedProduct) { throw 'The previous product was lost.' }
               $reviews = Invoke-RestMethod 'http://127.0.0.1:8765/api/reviews?product_id=1&all_years=true'
-              if ($reviews.total -ne 1) { throw 'The previous review was lost.' }
+              if ($reviews.total -ne 1 -or !$reviews.items[0].translation) {
+                  throw 'The previous review or translation was lost.'
+              }
               foreach ($folder in @($parent, $targetParent) | Sort-Object -Unique) {
                   $backup = @(Get-ChildItem -LiteralPath $folder -Filter 'LatAmCollector-Backup-*' -Directory)
                   if ($backup.Count -ne 1 -or !(Test-Path (Join-Path $backup[0].FullName 'data\latam_collector.db'))) {
@@ -157,9 +169,9 @@ jobs:
               Stop-Process -InputObject $server
               if (!$server.WaitForExit(15000)) { throw 'The new service did not stop for the shortcut test.' }
               Start-Process -FilePath $startup
-              if ((Wait-ForPlatform '0.8.0').database -ne $result.database) { throw 'The new startup shortcut opened the wrong library.' }
+              if ((Wait-ForPlatform '0.9.0').database -ne $result.database) { throw 'The new startup shortcut opened the wrong library.' }
               $current = Invoke-WebRequest 'http://127.0.0.1:8765' -UseBasicParsing
-              if ($current.Content -notlike '*id="review-start"*') { throw 'The review collection button is missing.' }
+              if ($current.Content -notlike '*id="workspace-search"*') { throw 'The new workbench did not load.' }
               Write-Host "Verified the $env:PREVIOUS case with saved products and reviews, a clean app directory and current startup shortcut."
           }
           catch {
@@ -180,4 +192,6 @@ jobs:
       - name: Attach the verified reinstall script
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload windows-v0.8.0 windows/LatAmCollector-Clean-Reinstall.ps1 --repo "$GITHUB_REPOSITORY"
+        run: |
+          cp windows/LatAmCollector-Clean-Reinstall.ps1 LatAmCollector-Clean-Reinstall-0.9.0.ps1
+          gh release upload windows-v0.9.0 LatAmCollector-Clean-Reinstall-0.9.0.ps1 --repo "$GITHUB_REPOSITORY"

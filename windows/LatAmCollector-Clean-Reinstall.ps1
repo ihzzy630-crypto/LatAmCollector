@@ -2,11 +2,11 @@
     $ErrorActionPreference = 'Stop'
     if ($env:OS -ne 'Windows_NT') { throw 'Run this script on the Windows PC that has LatAmCollector.' }
 
-    $version = '0.8.0'
+    $version = '0.9.0'
     $base = 'http://127.0.0.1:8765'
-    $setupName = 'LatAmCollector-Setup-0.8.0-x64.exe'
-    $setupHash = '4550d5ed4f856320c18274de47b1e189a98b94bf51e989714fd9befce902e374'
-    $setupUrl = 'https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.8.0/' + $setupName
+    $setupName = 'LatAmCollector-Setup-0.9.0-x64.exe'
+    $setupHash = 'a78918d8836b2ebeefb3e193dcdbc4c866a6136ece4a9852e4af8de2d993f0c6'
+    $setupUrl = 'https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.9.0/' + $setupName
     $productKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{14E201DE-F964-49EF-9FB8-C577FEC647F0}_is1'
     $legacyParent = 'D:\gpt' + [char]0x4E13 + [char]0x7528 + [char]0x6587 + [char]0x4EF6
     $legacy = [IO.Path]::Combine($legacyParent, 'LatAmCollector')
@@ -257,11 +257,13 @@
             }
             $page = Invoke-WebRequest -Uri $base -UseBasicParsing -TimeoutSec 5
             $helper = Get-Content -LiteralPath (Join-Path $target 'chrome_extension\manifest.json') -Raw | ConvertFrom-Json
-            if ($page.Content -notlike '*id="review-start"*' -or $helper.version -ne $version) {
-                throw 'The review button or current Chrome helper files were not found.'
+            if ($page.Content -notlike '*id="workspace-search"*' -or
+                $page.Content -notlike '*id="review-translate"*' -or $helper.version -ne $version -or
+                !(Test-Path -LiteralPath (Join-Path $target 'chrome_extension\popup.css') -PathType Leaf)) {
+                throw 'The new workbench or Chrome helper files were not found.'
             }
 
-            $oldPackagesPattern = '^LatAmCollector(?:-Setup-0\.[0-7]\.\d+-x64\.exe|-(?:Chrome|Radar|Windows)-v0\.[0-7](?:\.\d+)?\.zip|(?:_Windows)?_v0\.[0-7](?:\.\d+)?\.zip)$'
+            $oldPackagesPattern = '^LatAmCollector(?:-Setup-0\.[0-8]\.\d+-x64\.exe|-(?:Chrome|Radar|Windows)-v0\.[0-8](?:\.\d+)?\.zip|(?:_Windows)?_v0\.[0-8](?:\.\d+)?\.zip)$'
             foreach ($folder in @($downloads, $legacyParent, $parent) | Sort-Object -Unique) {
                 if (!(Test-Path -LiteralPath $folder -PathType Container)) { continue }
                 foreach ($file in Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue) {
@@ -273,7 +275,7 @@
             }
 
             Write-Host "LatAmCollector v$version is running. Open $base in Chrome." -ForegroundColor Green
-            Write-Host 'Verified the review capture button and Chrome helper files.'
+            Write-Host 'Verified the new workbench, translation button and Chrome helper files.'
             Write-Host 'Backup locations'
             $archives.Values | Sort-Object -Unique | ForEach-Object { Write-Host $_ }
         }
