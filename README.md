@@ -6,7 +6,7 @@ Chrome 采集助手可在正常浏览 Shopee / SHEIN 巴西站时整理支持的
 
 ## Windows EXE 安装
 
-1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.8.1/LatAmCollector-Setup-0.8.1-x64.exe)。安装包包含运行环境、选品雷达和 Chrome 采集助手。
+1. [下载并运行 Windows x64 安装包](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.9.0/LatAmCollector-Setup-0.9.0-x64.exe)。安装包包含运行环境、选品雷达和 Chrome 采集助手。
 2. 已安装过的用户选择原来的安装目录。安装器会识别 `D:\gpt专用文件\LatAmCollector`，每台电脑在各自安装目录的 `data` 文件夹存放商品库。
 3. 双击桌面的 **LatAmCollector** 打开选品雷达。需要 Windows 登录时启动服务，可在安装过程中勾选自动启动。
 4. 在 Chrome 按下文加载安装目录里的扩展文件夹。开始菜单的 **Chrome Helper Folder** 打开该目录。
@@ -32,7 +32,9 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 ## 更新选品雷达
 
-已经安装本地平台时，运行新版安装包并选择原来的安装目录。重启本地平台后，左下角显示 v0.8.1。
+已经安装本地平台时，运行新版安装包并选择原来的安装目录。重启本地平台后，左下角显示 v0.9.0。
+
+顶部搜索可从任意页面查找本地商品或店铺。仪表盘的品类排行可直接打开对应结果，选品雷达支持卡片与表格切换，以及逐项清除已应用的条件。
 
 首次启动会整理商品库里的旧品类，随后按平台品类和葡语标题为新商品归类。品类旁的数字按当前应用的筛选条件计算。可以在商品右侧点击“改品类”纠正自动结果，也可以随时恢复自动分类。
 
@@ -44,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 ## 单品评论采集与中文翻译
 
-1. 在装有 v0.8.1 采集助手的 Chrome 打开本地平台。从选品雷达进入某件商品的「查看评论」，点击「开始采集评论」。
+1. 在装有 v0.9.0 采集助手的 Chrome 打开本地平台。从选品雷达进入某件商品的「查看评论」，点击「开始采集评论」。
 2. 助手在后台打开原商品页，找到评论区并按页面提供的分页逐页入库。每次翻页前确认上一批已保存。可在单品页暂停或查看采集标签页。遇到登录、验证、限流、重复结果或不能确认下一页时会显示原因。
 3. 点商品下方的「翻译成中文」，可翻译已入库的文字评论并查看进度。完整 Windows 安装包含离线模型，新采集的评论也会在本机翻译。译文与葡语原文并排显示，译文可随评论导出。
 4. 「关键词气泡」显示提及条数，点击气泡可查看相关评论。悬停可查看葡语关键词和高、低星评论各有多少条提及。
@@ -87,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File $setup
 
 点「一键开始」后，队列在独立标签页按顺序采集，在本页商品确认入库后使用网页上的下一页按钮。每个入口最多采集设置的页数，也会在最后一页或重复页结束。保留队列页和本地平台运行。碰到验证、登录或访问受限时，点「查看采集页」手动处理，再点「继续采集」。
 
-已经安装本地平台时，可以[单独下载新版 Chrome 助手](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.8.1/LatAmCollector-Chrome-v0.8.1.zip)。解压后，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
+已经安装本地平台时，可以[单独下载新版 Chrome 助手](https://github.com/ihzzy630-crypto/LatAmCollector/releases/download/windows-v0.9.0/LatAmCollector-Chrome-v0.9.0.zip)。解压后，将其中的 `chrome_extension` 文件替换到原扩展目录，在 `chrome://extensions` 点「重新加载」，再刷新 Shopee 标签页。商品、图片和备注保存在本地平台的 `data` 文件夹里。
 
 ## 后续接口
 

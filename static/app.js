@@ -19,7 +19,10 @@ const subtitles = {
 };
 const categorySource = { platform: "平台品类", title: "按商品标题分类", legacy: "历史品类", manual: "手动分类", unknown: "待整理" };
 
-const products = { page: 1, pages: 1, items: [], request: 0, view: "cards", categoryGroups: [] };
+const products = {
+  page: 1, pages: 1, items: [], request: 0, categoryGroups: [], entry: "",
+  view: matchMedia("(max-width: 760px)").matches ? "cards" : "table"
+};
 const reviews = { page: 1, pages: 1, scope: "", request: 0, keyword: null };
 let currentPage = "dashboard";
 let lastCapture = null;
@@ -27,7 +30,8 @@ let editingProduct = null;
 let toastTimer;
 
 try {
-  if (localStorage.getItem("latam-product-view") === "table") products.view = "table";
+  const view = localStorage.getItem("latam-product-view");
+  if (view === "table" || view === "cards") products.view = view;
 } catch {
   // The view still works when the browser disallows local storage.
 }
@@ -93,13 +97,15 @@ function platformTag(platform) {
   return `<span class="platform-tag ${modifier}">${escapeHtml(platformName(platform) || "未知平台")}</span>`;
 }
 
-function barRow(label, value, maximum) {
+function barRow(label, value, maximum, href = "") {
   const width = maximum > 0 ? Math.min(100, value * 100 / maximum) : 0;
-  return `<div class="bar-row">
+  const tag = href ? "a" : "div";
+  const link = href ? ` href="${escapeHtml(href)}" data-route` : "";
+  return `<${tag} class="bar-row"${link}>
     <span>${escapeHtml(label)}</span>
     <span class="bar" aria-hidden="true"><span class="bar-fill" style="width:${width}%"></span></span>
     <strong>${number(value)}</strong>
-  </div>`;
+  </${tag}>`;
 }
 
 function delta(value, prefix = "") {
@@ -148,7 +154,8 @@ async function loadAnalytics() {
     const categories = data.categories.filter(category => category.monthly_sales > 0);
     const maxSales = Math.max(0, ...categories.map(category => category.monthly_sales));
     byId("category-bars").innerHTML = categories.length
-      ? categories.map(category => barRow(category.category, category.monthly_sales, maxSales)).join("")
+      ? categories.map(category => barRow(category.category, category.monthly_sales, maxSales,
+        "?page=products&category=" + encodeURIComponent(category.category))).join("")
       : emptyState("暂无月销量", "入库商品有月销量后，这里会显示按品类汇总的数据。");
     const quality = [
       ["exact", "精确月销量", data.sales_quality.exact_count],
@@ -157,7 +164,11 @@ async function loadAnalytics() {
     ];
     const segments = quality.filter(([, , value]) => value > 0).map(([kind, , value]) =>
       `<span class="part quality-${kind}" style="flex-grow:${Number(value)}"></span>`).join("");
-    byId("quality-box").innerHTML = `<div class="quality-strip" aria-hidden="true">${segments}</div>
+    const available = Number(data.sales_quality.exact_count || 0) + Number(data.sales_quality.estimated_count || 0);
+    const total = available + Number(data.sales_quality.missing_count || 0);
+    const coverage = total ? Math.round(available / total * 100) + "%" : "—";
+    byId("quality-box").innerHTML = `<div class="quality-summary"><strong>${coverage}</strong><span>商品有月销量记录</span></div>
+      <div class="quality-strip" aria-hidden="true">${segments}</div>
       <div class="quality-rows">${quality.map(([kind, label, value]) => `<div class="quality-row"><span class="quality-dot quality-${kind}" aria-hidden="true"></span><span>${label}</span><strong>${number(value)}</strong></div>`).join("")}</div>
       <p class="muted small">估算值取「1千+」等公开档位的下限。</p>`;
     byId("mover-rows").innerHTML = data.movers.map(product => `<tr>
@@ -228,12 +239,84 @@ function productParams(page) {
   return params;
 }
 
-function clearProductFilters() {
+function resetProductFilters({ defaults = false, allYears = false } = {}) {
   byId("product-filter").reset();
-  byId("min-price").value = "";
-  byId("min-sales").value = "";
+  if (!defaults) {
+    byId("min-price").value = "";
+    byId("min-sales").value = "";
+  }
+  if (allYears) document.querySelectorAll(".product-year").forEach(box => { box.checked = false; });
   byId("sort-by").value = "monthly_sold";
   updateSalesLabel();
+}
+
+function clearProductFilters() {
+  resetProductFilters();
+  byId("workspace-query").value = "";
+  if (products.entry) {
+    history.replaceState(null, "", "?page=products");
+    products.entry = "";
+  }
+  loadProducts();
+}
+
+function applyProductEntry(params) {
+  const entry = new URLSearchParams();
+  for (const name of ["q", "category", "favorite"]) {
+    if (params.get(name)) entry.set(name, params.get(name));
+  }
+  const key = entry.toString();
+  if (key === products.entry) return;
+  products.entry = key;
+  resetProductFilters({ defaults: !key, allYears: Boolean(key) });
+  byId("q").value = entry.get("q") || "";
+  byId("workspace-query").value = byId("q").value;
+  byId("favorite").value = entry.get("favorite") === "1" ? "1" : "";
+  const category = entry.get("category");
+  if (category) {
+    const select = byId("category");
+    if (![...select.options].some(option => option.value === category)) select.add(new Option(category, category));
+    select.value = category;
+  }
+  products.page = 1;
+}
+
+function renderProductFilterSummary(params) {
+  const conditions = [
+    ["q", "搜索", params.get("q")], ["platform", "平台", platformName(params.get("platform"))],
+    ["category", "品类", params.get("category")], ["min-price", "价格 ≥ R$", params.get("min_price")],
+    ["max-price", "价格 ≤ R$", params.get("max_price")],
+    ["min-sales", params.get("sales_metric") === "historical" ? "累计销 ≥" : "月销 ≥", params.get("min_sales")],
+    ["max-sales", "销量 ≤", params.get("max_sales")], ["years", "上架", params.get("years").replaceAll(",", " / ")],
+    ["min-growth", "增长 ≥", params.get("min_growth")], ["min-rating", "评分 ≥", params.get("min_rating")],
+    ["min-reviews", "评论 ≥", params.get("min_reviews")], ["location", "地区", params.get("location")],
+    ["sales-quality", "口径", ({ exact: "精确值", estimated: "估算档位" })[params.get("sales_quality")]],
+    ["favorite", "", params.get("favorite") === "1" ? "只看收藏" : ""],
+    ["image-state", "", ({ with: "有图", missing: "缺图" })[params.get("image_state")]]
+  ];
+  const panel = byId("product-filter-summary");
+  panel.innerHTML = conditions.filter(([, , value]) => value).map(([field, label, value]) => {
+    const text = (label ? label + " " : "") + value;
+    return `<button type="button" class="filter-chip" data-remove-product-filter="${field}" aria-label="清除${escapeHtml(text)}">
+      <span>${escapeHtml(text)}</span><span aria-hidden="true">×</span>
+    </button>`;
+  }).join("");
+  panel.hidden = !panel.childElementCount;
+  byId("favorite-scope").setAttribute("aria-pressed", String(params.get("favorite") === "1"));
+}
+
+function removeProductFilter(field) {
+  if (field === "years") document.querySelectorAll(".product-year").forEach(box => { box.checked = false; });
+  else byId(field).value = "";
+  if (field === "q") byId("workspace-query").value = "";
+  const entry = new URLSearchParams(products.entry);
+  if (entry.has(field)) {
+    entry.delete(field);
+    const url = new URL(location.href);
+    url.searchParams.delete(field);
+    history.replaceState(null, "", url.href);
+    products.entry = entry.toString();
+  }
   loadProducts();
 }
 
@@ -260,7 +343,7 @@ function productReviewLink(productId) {
   return `?page=reviews&product=${encodeURIComponent(productId)}`;
 }
 
-function productActions(product) {
+function productActions(product, includeFavorite = false) {
   const url = webUrl(product.product_url);
   return `<div class="product-main-actions">
     <a class="btn soft small" href="${escapeHtml(productReviewLink(product.id))}" data-route>查看评论</a>
@@ -269,6 +352,7 @@ function productActions(product) {
   <div class="product-edits">
     <button type="button" class="text-button" data-product="${product.id}" data-product-action="category">改品类</button>
     <button type="button" class="text-button" data-product="${product.id}" data-product-action="note">备注</button>
+    ${includeFavorite ? favoriteButton(product) : ""}
   </div>`;
 }
 
@@ -312,7 +396,7 @@ function productRow(product, metric) {
         <b class="product-title" lang="pt-BR" title="${escapeHtml(product.title)}">${escapeHtml(product.title)}</b>
         <div class="table-meta">${platformTag(product.platform)}<span class="shop-line" title="${shop}">${shop}</span></div>
         <span class="cell-detail">采集 ${number(product.capture_count)} 次</span>
-        ${product.note ? `<span class="cell-detail">备注 · ${escapeHtml(product.note)}</span>` : ""}
+        ${product.note ? `<span class="cell-detail product-row-note" title="${escapeHtml(product.note)}">备注 · ${escapeHtml(product.note)}</span>` : ""}
       </div>
     </div></td>
     <td>${productCategory(product)}<span class="cell-detail">${escapeHtml(shortDate(product.created_at))}</span></td>
@@ -321,7 +405,7 @@ function productRow(product, metric) {
     <td>${delta(product[metric + "_sold_delta"])}</td>
     <td><strong class="score">${escapeHtml(product.opportunity_score)}</strong><span class="cell-detail">${escapeHtml(product.lifecycle)}</span></td>
     <td>${platformRating(product)}<span class="cell-detail">${number(product.review_count)} 条</span></td>
-    <td>${productActions(product)}<div class="product-edits">${favoriteButton(product)}</div></td>
+    <td>${productActions(product, true)}</td>
   </tr>`;
 }
 
@@ -365,6 +449,7 @@ async function loadProducts(page = 1) {
     const category = byId("category");
     fillCategorySelect(category, category.value, data.category_counts || {});
     byId("product-total").textContent = `${number(data.total)} 件商品`;
+    renderProductFilterSummary(params);
     byId("product-empty").hidden = data.items.length > 0;
     if (!data.items.length) {
       byId("product-empty").innerHTML = emptyState("没有符合条件的商品", "可扩大价格、销量或品类范围。", '<button type="button" class="btn secondary" data-clear-products>清空筛选</button>');
@@ -693,6 +778,7 @@ function renderRoute({ focus = false } = {}) {
   const params = new URLSearchParams(location.search);
   const requested = params.get("page");
   currentPage = Object.hasOwn(titles, requested) ? requested : "dashboard";
+  if (currentPage === "products") applyProductEntry(params);
   if (currentPage === "reviews") {
     const scope = params.get("product") ?? "";
     resetReviewScope(/^[1-9]\d{0,17}$/.test(scope) ? scope : "");
@@ -704,6 +790,7 @@ function renderRoute({ focus = false } = {}) {
   });
   const title = byId("page-title");
   title.textContent = titles[currentPage];
+  byId("workspace-current").textContent = titles[currentPage];
   document.title = titles[currentPage] + " · LatAm Collector";
   byId("refresh-page").hidden = !pageLoaders[currentPage];
   updateSubtitle();
@@ -720,12 +807,17 @@ function setDisclosure(button, expanded) {
   byId(button.dataset.disclosure).hidden = !expanded;
 }
 
+function navigate(href) {
+  const url = new URL(href, location.href);
+  if (location.href !== url.href) history.pushState(null, "", url.href);
+  renderRoute({ focus: true });
+}
+
 document.addEventListener("click", event => {
   const link = event.target.closest("a[data-route]");
   if (link && !event.defaultPrevented && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
-    if (location.href !== link.href) history.pushState(null, "", link.href);
-    renderRoute({ focus: true });
+    navigate(link.href);
     return;
   }
   const button = event.target.closest("button");
@@ -747,6 +839,22 @@ document.addEventListener("click", event => {
 });
 
 window.addEventListener("popstate", () => renderRoute());
+byId("workspace-search").addEventListener("submit", event => {
+  event.preventDefault();
+  const query = readField("workspace-query");
+  if (query) {
+    products.entry = "";
+    navigate("?page=products&q=" + encodeURIComponent(query));
+  }
+});
+document.addEventListener("keydown", event => {
+  if (event.key.toLowerCase() === "k" && (event.ctrlKey || event.metaKey) && !document.querySelector("dialog[open]")) {
+    event.preventDefault();
+    const field = byId("workspace-query");
+    field.focus();
+    field.select();
+  }
+});
 byId("refresh-page").addEventListener("click", () => {
   loadService();
   loadStats();
@@ -761,6 +869,18 @@ for (const form of ["product-filter", "review-filter"]) {
   }, true);
 }
 byId("clear-product-filters").addEventListener("click", clearProductFilters);
+byId("product-filter-summary").addEventListener("click", event => {
+  const chip = event.target.closest("[data-remove-product-filter]");
+  if (chip) removeProductFilter(chip.dataset.removeProductFilter);
+});
+byId("favorite-scope").addEventListener("click", () => {
+  const select = byId("favorite");
+  if (select.value === "1") removeProductFilter("favorite");
+  else {
+    select.value = "1";
+    loadProducts();
+  }
+});
 byId("clear-review-filters").addEventListener("click", () => {
   byId("review-filter").reset();
   selectReviewKeyword(null);

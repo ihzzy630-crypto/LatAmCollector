@@ -43,7 +43,9 @@ try {
     Install-Setup
     $expectedManifest = Get-Content "$PSScriptRoot\..\chrome_extension\manifest.json" -Raw | ConvertFrom-Json
     $manifest = Get-Content "$installDir\chrome_extension\manifest.json" -Raw | ConvertFrom-Json
-    if ($manifest.version -ne $expectedManifest.version -or -not (Test-Path "$installDir\chrome_extension\queue.html")) {
+    if ($manifest.version -ne $expectedManifest.version -or
+        -not (Test-Path "$installDir\chrome_extension\queue.html") -or
+        -not (Test-Path "$installDir\chrome_extension\popup.css")) {
         throw 'The installer did not place the Chrome helper files.'
     }
     foreach ($shortcut in @($desktopShortcut, $startupShortcut)) {
@@ -58,8 +60,8 @@ try {
     if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*/static/app.js*') {
         throw 'The updated radar page is missing.'
     }
-    foreach ($id in @('review-translate', 'review-translation-progress', 'review-keywords')) {
-        if ($dashboardResponse.Content -notlike ('*id="' + $id + '"*')) { throw "The review page is missing $id." }
+    foreach ($id in @('workspace-search', 'product-filter-summary', 'review-translate', 'review-translation-progress', 'review-keywords')) {
+        if ($dashboardResponse.Content -notlike ('*id="' + $id + '"*')) { throw "The workbench is missing $id." }
     }
     foreach ($asset in @('app.css', 'app.js', 'review_tools.js')) {
         $response = Invoke-WebRequest -Uri "$url/static/$asset" -UseBasicParsing -TimeoutSec 5

@@ -2,37 +2,43 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <style>
-    body{font-family:"Microsoft YaHei",sans-serif;width:330px;margin:0;padding:18px;color:#17212b;background:#f7f8fa}h1{font-size:17px;margin:0 0 14px}.brand{color:#ef553b}.box{background:white;border:1px solid #e3e7eb;border-radius:10px;padding:13px;margin:10px 0}.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;font-size:13px}.muted{color:#71808f;font-size:12px;line-height:1.6}.ok{color:#198754}.bad{color:#d83d27}.blue{color:#2b6cb0}button{width:100%;border:0;border-radius:8px;padding:10px;background:#ef553b;color:white;cursor:pointer;margin-top:8px}button.secondary{background:#e9edf1;color:#34404c}button:disabled{opacity:.5;cursor:not-allowed}input{width:92px;border:1px solid #d8dee5;border-radius:7px;padding:6px}.actions{display:grid;grid-template-columns:2fr 1fr;gap:7px}.progress{height:7px;background:#edf0f3;border-radius:8px;overflow:hidden;margin:9px 0}.progress i{display:block;height:100%;width:0;background:#ef553b;border-radius:8px;transition:width .2s}code{font-size:11px}
-    #bulk-limit[hidden]{display:none}
-  </style>
+  <title>LatAm Collector 采集助手</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1><span class="brand">LatAm</span> Chrome 采集助手 <small>v0.8.1</small></h1>
-  <div class="box">
+  <header class="popup-header">
+    <span class="popup-mark" aria-hidden="true">L</span>
+    <div><p class="brand">LatAm Collector</p><h1>Chrome 采集助手</h1></div>
+    <small>v0.9.0</small>
+  </header>
+  <section class="box" aria-label="连接状态">
     <div class="row"><span>本地平台</span><b id="platform">检查中…</b></div>
     <div class="row"><span id="page-name">采集页面</span><b id="page">检查中…</b></div>
-  </div>
-  <div class="box">
-    <b id="bulk-title">一键采集当前商品列表</b>
-    <div class="row" id="bulk-limit"><span>本次最多采集</span><label><input id="bulk-max" type="number" value="3000" min="20" max="6000" step="20"> 件</label></div>
-    <div class="progress"><i id="bulk-bar"></i></div>
-    <div class="muted" id="bulk-state">先打开并刷新分类页或搜索结果页</div>
-    <div class="actions" id="bulk-actions"><button id="bulk-start" disabled>开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
-    <div class="muted" id="bulk-help">Shopee 出现页面错误或验证时会暂停。手动打开正常商品列表后，可再开始采集。</div>
-  </div>
-  <div class="box">
-    <div class="row"><span>捕获响应</span><b id="captures">0</b></div>
-    <div class="row"><span>本地商品库</span><b id="products">0</b></div>
-    <div class="row"><span>本地评论库</span><b id="reviews">0</b></div>
-    <div class="muted" id="last">尚未捕获数据</div>
-  </div>
-  <div class="muted">保持本地平台运行，打开或刷新 Shopee / SHEIN 巴西站的分类页、搜索页、商品页或评论区。助手只整理页面公开响应，不读取密码。</div>
-  <button id="queue" class="secondary">Shopee 子类和关键词批量采集</button>
-  <button id="shopee-home" class="secondary">打开 Shopee 巴西首页</button>
-  <button id="dashboard">打开选品雷达</button>
+  </section>
+  <section class="box" aria-labelledby="bulk-title">
+    <h2 id="bulk-title">一键采集当前商品列表</h2>
+    <div class="row" id="bulk-limit"><label for="bulk-max">本次最多采集</label><span><input id="bulk-max" type="number" value="3000" min="20" max="6000" step="20"> 件</span></div>
+    <div class="progress" aria-hidden="true"><i id="bulk-bar"></i></div>
+    <p class="muted" id="bulk-state" role="status">先打开并刷新分类页或搜索结果页</p>
+    <div class="actions bulk-actions" id="bulk-actions"><button id="bulk-start" disabled>开始全部采集</button><button id="bulk-stop" class="secondary" disabled>暂停</button></div>
+    <p class="muted" id="bulk-help">遇到页面错误或验证会暂停。恢复正常商品列表后可继续。</p>
+  </section>
+  <section class="box" aria-label="入库记录">
+    <div class="counts">
+      <div><span>捕获响应</span><b id="captures">0</b></div>
+      <div><span>本地商品</span><b id="products">0</b></div>
+      <div><span>本地评论</span><b id="reviews">0</b></div>
+    </div>
+    <p class="muted" id="last">尚未捕获数据</p>
+  </section>
+  <footer class="popup-links">
+    <button id="dashboard">打开选品雷达 <span aria-hidden="true">↗</span></button>
+    <div class="actions">
+      <button id="queue" class="secondary">批量采集队列</button>
+      <button id="shopee-home" class="secondary">Shopee 巴西首页</button>
+    </div>
+  </footer>
   <script src="queue_core.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
-

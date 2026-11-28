@@ -34,7 +34,7 @@ from .review_capture import reconcile_review_identity, review_target
 PLATFORM_HOST = "127.0.0.1"
 PLATFORM_PORT = 8765
 PLATFORM_URL = f"http://{PLATFORM_HOST}:{PLATFORM_PORT}"
-APP_VERSION = "0.8.1"
+APP_VERSION = "0.9.0"
 
 
 def resource_path(relative: str) -> Path:
