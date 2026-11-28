@@ -1,0 +1,105 @@
+name: Verify Windows workbench upgrade
+
+on:
+  push:
+    branches: [codex/check-v090-upgrade]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  upgrade:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Upgrade a real v0.8.1 installation with its original library
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('LatAmCollector-' + [char]0x5347 + [char]0x7EA7)
+          $database = Join-Path $root 'data\latam_collector.db'
+          $exe = Join-Path $root 'LatAmCollector.exe'
+          $url = 'http://127.0.0.1:8765'
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download"
+          $flags = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=autostart', ('/DIR="' + $root + '"'))
+
+          function Install-LatAm([string]$version) {
+              $file = "LatAmCollector-Setup-$version-x64.exe"
+              $setup = Join-Path $env:RUNNER_TEMP $file
+              & curl.exe --silent --show-error --fail --location --retry 2 --output $setup "$base/windows-v$version/$file"
+              if ($LASTEXITCODE) { throw "Setup download failed for $version" }
+              $result = Start-Process -FilePath $setup -ArgumentList $flags -Wait -PassThru
+              if ($result.ExitCode) { throw "Setup $version failed with code $($result.ExitCode)" }
+          }
+
+          function Wait-ForVersion([string]$expected) {
+              for ($attempt = 0; $attempt -lt 100; $attempt++) {
+                  try {
+                      $response = Invoke-WebRequest "$url/api/system" -UseBasicParsing -TimeoutSec 2
+                      $state = [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()) | ConvertFrom-Json
+                      if ($state.version -eq $expected -and $state.database -eq $database) { return }
+                  }
+                  catch {}
+                  Start-Sleep -Milliseconds 400
+              }
+              throw "Version $expected did not start with the original data directory."
+          }
+
+          Install-LatAm '0.8.1'
+          $old = Start-Process -FilePath $exe -ArgumentList '--no-browser' -PassThru
+          Wait-ForVersion '0.8.1'
+          $fixtures = @(
+              @{
+                  source_url = 'https://shopee.com.br/api/v4/search/search_items'
+                  payload = @{ items = @(@{ itemid = 441; shopid = 12; name = 'Upgrade Caneta'; price = 3200000 }) }
+              },
+              @{
+                  source_url = 'https://shopee.com.br/api/v2/item/get_ratings?shopid=12&itemid=441'
+                  page_url = 'https://shopee.com.br/product/12/441'
+                  payload = @{ data = @{ ratings = @(@{ cmtid = 701; rating_star = 5; comment = 'Chegou rapido e veio bem embalado.' }) } }
+              }
+          )
+          foreach ($fixture in $fixtures) {
+              $body = $fixture | ConvertTo-Json -Depth 6
+              Invoke-RestMethod "$url/api/capture" -Method Post -ContentType 'application/json' -Body $body | Out-Null
+          }
+          Invoke-RestMethod "$url/api/products/1" -Method Patch -ContentType 'application/json' -Body '{"is_favorite":true,"note":"Existing note"}' | Out-Null
+          $translationUrl = "$url/api/products/1/review-translation"
+          Invoke-RestMethod $translationUrl -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
+          $deadline = [DateTime]::UtcNow.AddSeconds(45)
+          do {
+              $translation = Invoke-RestMethod $translationUrl
+              if ($translation.translated -eq 1) { break }
+              if ($translation.state -eq 'error') { throw 'The original installation did not translate its sample review.' }
+              Start-Sleep -Milliseconds 500
+          } while ([DateTime]::UtcNow -lt $deadline)
+          if ($translation.translated -ne 1) { throw 'The old review translation did not finish.' }
+
+          $server = Get-Process -Id ([int](Get-Content -LiteralPath (Join-Path $root 'data\server.pid') -Raw))
+          if ($server.Path -ne $exe) { throw 'The original test service did not match the expected executable.' }
+          Stop-Process -InputObject $server
+          if (!$old.WaitForExit(15000)) { throw 'The old test executable did not exit.' }
+
+          gh run watch 46096141532 --repo $env:GITHUB_REPOSITORY --exit-status --interval 10
+          if ($LASTEXITCODE) { throw 'The published build did not pass.' }
+          Install-LatAm '0.9.0'
+          $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'LatAmCollector-AutoStart.lnk'
+          Start-Process -FilePath $startup
+          Wait-ForVersion '0.9.0'
+
+          $products = Invoke-RestMethod "$url/api/products?favorite=1"
+          if ($products.total -ne 1 -or $products.items[0].title -ne 'Upgrade Caneta' -or
+              $products.items[0].note -ne 'Existing note') { throw 'The original product, favorite, or note was lost.' }
+          $result = Invoke-WebRequest "$url/api/reviews?all_years=true&product_id=1" -UseBasicParsing
+          $reviews = [Text.Encoding]::UTF8.GetString($result.RawContentStream.ToArray()) | ConvertFrom-Json
+          if ($reviews.total -ne 1 -or $reviews.items[0].translation -notmatch '[\u4e00-\u9fff]') {
+              throw 'The original review or Chinese translation was lost.'
+          }
+          $page = Invoke-WebRequest $url -UseBasicParsing
+          if ($page.Content -notlike '*id="workspace-search"*' -or $page.Content -notlike '*app.css?v=0.9.0*') {
+              throw 'The updated workbench did not load.'
+          }
+          Write-Host 'Verified a real Windows v0.8.1 to v0.9.0 upgrade with the same database, favorite, note, original review, translation, and startup shortcut.'
