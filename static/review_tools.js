@@ -3,8 +3,10 @@
 const reviewTools = (() => {
   const captureActive = new Set(["opening", "running"]);
   const translationActive = new Set(["queued", "translating"]);
-  let product = "";
+  let product = null;
   let generation = 0;
+  let statusRequest = 0;
+  let keywordRequest = 0;
   let timer;
   let job = null;
   let translation = null;
@@ -16,7 +18,7 @@ const reviewTools = (() => {
       const requestId = crypto.randomUUID();
       const wait = setTimeout(() => {
         window.removeEventListener("message", receive);
-        reject(new Error("请在已加载 v0.8.0 采集助手的 Chrome 中刷新本地平台"));
+        reject(new Error("请在已加载采集助手的 Chrome 中刷新本地平台"));
       }, action === "status" ? 2400 : 8500);
       function receive(event) {
         if (event.source !== window || event.origin !== location.origin ||
@@ -35,18 +37,34 @@ const reviewTools = (() => {
     return "/api/products/" + id + "/review-" + suffix;
   }
 
+  function keywordBubble(term) {
+    const label = term.chinese || term.text;
+    const count = number(term.count);
+    const tooltip = [term.text, count + " 条提及", "高分 " + number(term.positive), "低分 " + number(term.negative)].join(" · ");
+    return `<button class="keyword-bubble${term.negative > term.positive ? " low-rating" : ""}"
+      type="button" data-keyword="${escapeHtml(term.key)}" aria-controls="review-rows"
+      aria-label="${escapeHtml(label)}，${count} 条提及" aria-pressed="false" title="${escapeHtml(tooltip)}">
+      <span lang="${term.chinese ? "zh-CN" : "pt-BR"}">${escapeHtml(label)}</span><span class="keyword-count" aria-hidden="true">${count}</span>
+    </button>`;
+  }
+
   async function refreshKeywords(id, stamp) {
+    const request = ++keywordRequest;
+    const panel = byId("review-keywords");
     try {
-      const data = await api(productApi(id, "keywords"));
-      if (stamp !== generation) return;
-      byId("review-keywords").innerHTML = data.keywords.map(term => `<div class="review-keyword">
-        <strong>${escapeHtml(term.chinese || term.text)}</strong>
-        ${term.chinese ? `<span class="muted small" lang="pt-BR">${escapeHtml(term.text)}</span>` : ""}
-        <span class="muted small">${number(term.count)} 条提及${term.positive ? ` · 高分 ${number(term.positive)}` : ""}
-        ${term.negative ? ` <span class="keyword-negative">· 低分 ${number(term.negative)}</span>` : ""}</span>
-      </div>`).join("") || '<p class="muted small">暂无可统计的评论关键词</p>';
+      const { keywords } = await api(id ? productApi(id, "keywords") : "/api/review-keywords");
+      if (stamp !== generation || request !== keywordRequest) return;
+      const focusedKey = panel.contains(document.activeElement) ? document.activeElement.dataset.keyword : "";
+      panel.innerHTML = keywords.map(keywordBubble).join("") || '<p class="muted small">暂无可提取关键词的评论</p>';
+      const selected = keywords.find(term => term.key === reviews.keyword?.key);
+      if (selected) reviews.keyword.label = selected.chinese || selected.text;
+      renderReviewKeywordSelection();
+      if (focusedKey) {
+        Array.from(panel.querySelectorAll("[data-keyword]")).find(button => button.dataset.keyword === focusedKey)
+          ?.focus({ preventScroll: true });
+      }
     } catch (error) {
-      if (stamp === generation) byId("review-keywords").textContent = error.message;
+      if (stamp === generation && request === keywordRequest) panel.textContent = error.message;
     }
   }
 
@@ -63,83 +81,99 @@ const reviewTools = (() => {
     open.disabled = issuingCommand;
     const detail = state.pages ? `已保存 ${number(state.pages)} 页 · 本轮读取 ${number(state.count)} 条。` : "";
     const descriptions = {
-      idle: "从原商品页找到评论，入库后自动继续下一页。",
-      busy: "正在采集另一件商品，完成后可开始此任务。"
+      idle: "从商品页读取评论，逐页保存到本地。",
+      busy: "另一件商品正在采集，完成后可开始。"
     };
     byId("review-job-status").textContent = detail + (state.message || descriptions[state.status] || "");
   }
 
-  function renderTranslation(state) {
+  function translationComplete(state) {
+    return state?.total > 0 && state.translated === state.total && state.state !== "error";
+  }
+
+  function renderTranslation(state, error = "") {
     const button = byId("review-translate");
     const text = byId("review-translation-status");
-    const count = `中文译文 ${number(state.translated)} / ${number(state.total)} 条文字评论`;
-    const busy = translationActive.has(state.state);
-    button.disabled = startingTranslation || busy;
-    button.hidden = !state.models_ready || busy || (state.translated === state.total && state.state !== "error");
-    button.textContent = state.state === "error" ? "重试翻译" : "翻译已入库评论";
-    const messages = {
-      needs_models: "当前安装缺少离线翻译模型，请使用完整的 Windows 安装包。",
-      queued: "已加入本机翻译队列",
-      translating: count + " · 本机翻译中",
-      ready: count,
-      error: state.error || "本机翻译未完成"
-    };
-    text.textContent = messages[state.state] || count;
+    const progress = byId("review-translation-progress");
+    const total = state?.total ?? 0;
+    const busy = startingTranslation || translationActive.has(state?.state);
+    const complete = translationComplete(state);
+    button.disabled = busy || !total || (!state.models_ready && !complete);
+    button.setAttribute("aria-busy", String(busy));
+    progress.hidden = !total;
+    progress.max = total || 1;
+    progress.value = state?.translated ?? 0;
+    text.dataset.state = error ? "error" : state?.state || "";
+
+    const count = `已翻译 ${number(state?.translated)} / ${number(total)} 条`;
+    if (error) text.textContent = error;
+    else if (!product) text.textContent = "进入单个商品的评论页后可翻译。";
+    else if (!state) text.textContent = "正在检查翻译状态…";
+    else if (busy) text.textContent = count + (state.state === "queued" ? " · 等待翻译" : " · 本机翻译中");
+    else if (complete) text.textContent = count + " · 已完成";
+    else if (!state.models_ready) text.textContent = "当前安装缺少离线翻译模型。";
+    else if (!total) text.textContent = "采集或导入文字评论后即可翻译。";
+    else if (state.state === "error") text.textContent = state.error || "本机翻译未完成，可再次点击翻译。";
+    else text.textContent = count + " · 本机翻译";
   }
 
   async function check(id, stamp) {
-    const [capture, translated] = await Promise.allSettled([
-      command("status", id), api(productApi(id, "translation"))
+    clearTimeout(timer);
+    const request = ++statusRequest;
+    const isCurrent = () => stamp === generation && request === statusRequest;
+    const previousJob = job;
+    const previousTranslation = translation;
+    await Promise.all([
+      command("status", id).catch(error => ({ status: "unavailable", message: error.message })).then(result => {
+        if (!isCurrent()) return;
+        job = result;
+        renderJob(job);
+      }),
+      api(productApi(id, "translation")).then(state => {
+        if (!isCurrent()) return;
+        translation = state;
+        renderTranslation(translation);
+      }, error => {
+        if (!isCurrent()) return;
+        translation = null;
+        renderTranslation(null, error.message);
+      })
     ]);
-    if (stamp !== generation) return;
-    const nextJob = capture.status === "fulfilled" ? capture.value : {
-      status: "unavailable", message: capture.reason.message
-    };
-    const nextTranslation = translated.status === "fulfilled" ? translated.value : null;
-    const capturedMore = job && (nextJob.pages > job.pages ||
-      (nextJob.run && nextJob.run !== job.run && nextJob.pages > 0));
-    const captureFinished = job && captureActive.has(job.status) && ["paused", "done"].includes(nextJob.status);
-    const translatedMore = nextTranslation && translation && nextTranslation.translated !== translation.translated;
-    const translationFinished = nextTranslation && translation &&
-      translationActive.has(translation.state) && !translationActive.has(nextTranslation.state);
-    job = nextJob;
-    translation = nextTranslation;
-    renderJob(job);
-    if (translation) renderTranslation(translation);
-    else {
-      byId("review-translate").hidden = true;
-      byId("review-translation-status").textContent = translated.reason.message;
-    }
-    if (capturedMore || captureFinished || translatedMore || translationFinished) {
-      loadReviews(reviews.page);
-      if (capturedMore || captureFinished || translationFinished) refreshKeywords(id, stamp);
-    }
-    if (captureActive.has(job.status) || job.status === "busy" || translationActive.has(translation?.state) || captureFinished) {
+    if (!isCurrent()) return;
+    const capturedMore = previousJob && (job.pages > previousJob.pages ||
+      (job.run && job.run !== previousJob.run && job.pages > 0));
+    const captureFinished = ["paused", "done"].includes(job.status) &&
+      (capturedMore || captureActive.has(previousJob?.status));
+    const translatedMore = translation && previousTranslation && translation.translated !== previousTranslation.translated;
+    const translating = translationActive.has(translation?.state);
+    const translationFinished = translation && translationActive.has(previousTranslation?.state) && !translating;
+    if (capturedMore || captureFinished || translatedMore || translationFinished) loadReviews(reviews.page);
+    if (capturedMore || captureFinished || translationFinished || (translatedMore && !translating)) refreshKeywords(id, stamp);
+    if (captureActive.has(job.status) || job.status === "busy" || translating || captureFinished) {
       timer = setTimeout(() => check(id, stamp), 1800);
     }
   }
 
   function show(id) {
     clearTimeout(timer);
+    const stamp = ++generation;
     if (product !== id) {
-      const available = Boolean(id);
-      byId("review-collection").hidden = !available;
-      byId("review-keyword-panel").hidden = !available;
-      byId("review-keywords").replaceChildren();
-      byId("review-translate").hidden = true;
+      product = id;
+      job = null;
+      translation = null;
+      byId("review-collection").hidden = !id;
+      byId("review-workflow").classList.toggle("scoped", Boolean(id));
+      byId("review-keyword-scope").textContent = id ? "当前商品 · 已入库评论" : "全部已入库评论";
+      byId("review-keywords").innerHTML = '<p class="muted small">正在统计关键词…</p>';
       byId("review-start").disabled = true;
       byId("review-stop").hidden = true;
       byId("review-open-tab").hidden = true;
       byId("review-job-status").textContent = "正在连接 Chrome 采集助手…";
-      byId("review-translation-status").textContent = "正在检查中文翻译…";
-      job = null;
-      translation = null;
-      product = id;
+      renderTranslation(null);
     }
-    const stamp = ++generation;
-    if (!id) return;
+    if (id === null) return;
     refreshKeywords(id, stamp);
-    check(id, stamp);
+    if (id) check(id, stamp);
   }
 
   async function control(action) {
@@ -150,37 +184,32 @@ const reviewTools = (() => {
     renderJob(job || { status: "idle" });
     try {
       const result = await command(action, id);
-      if (stamp !== generation) return;
-      renderJob(result);
+      if (stamp === generation) renderJob(result);
     } catch (error) {
       if (stamp === generation) toast(error.message);
     } finally {
       issuingCommand = false;
-      if (product) {
-        clearTimeout(timer);
-        check(product, ++generation);
-      }
+      if (product) check(product, generation);
     }
   }
 
   async function startTranslation() {
-    if (!product || !translation || startingTranslation) return;
+    if (!product || byId("review-translate").disabled) return;
+    if (translationComplete(translation)) {
+      byId("review-list-title").focus();
+      return;
+    }
     const id = product;
     const stamp = generation;
     startingTranslation = true;
     renderTranslation(translation);
     try {
-      const result = await api(productApi(id, "translation"), jsonOptions("POST", {}));
-      if (stamp !== generation) return;
-      renderTranslation(result);
+      await api(productApi(id, "translation"), jsonOptions("POST", {}));
     } catch (error) {
       if (stamp === generation) toast(error.message);
     } finally {
       startingTranslation = false;
-      if (product) {
-        clearTimeout(timer);
-        check(product, ++generation);
-      }
+      if (product) check(product, generation);
     }
   }
 

@@ -15,8 +15,9 @@ MODEL_DOWNLOADS = (
     ("translate-en_zh-1_9", 70_743_021, "433e7c4f034d87fbe2353161e05f18646d7999452f801a4e1f0378522b9850ab"),
 )
 MODEL_FILES = ("sentencepiece.model", "model/config.json", "model/shared_vocabulary.json", "model/model.bin")
+TEXT_COMMENTS = "trim(r.comment)<>''"
 PRODUCT_COMMENTS = """(r.platform,r.shop_id,r.item_id) =
-    (SELECT platform,shop_id,item_id FROM products WHERE id=?) AND trim(r.comment)<>''"""
+    (SELECT platform,shop_id,item_id FROM products WHERE id=?) AND """ + TEXT_COMMENTS
 TRANSLATION_JOIN = "LEFT JOIN review_translations t ON t.review_id=r.id AND t.source_text=r.comment"
 
 _lock = threading.Lock()
@@ -91,9 +92,10 @@ class LocalTranslator:
         return [" ".join(parts).strip() for parts in translated]
 
 
-def keywords(product_id: int) -> list[dict]:
+def keywords(product_id: int | None = None) -> list[dict]:
+    where, values = (TEXT_COMMENTS, ()) if product_id is None else (PRODUCT_COMMENTS, (product_id,))
     with database.connect() as db:
-        rows = db.execute("SELECT r.comment,r.rating FROM reviews r WHERE " + PRODUCT_COMMENTS, (product_id,))
+        rows = db.execute("SELECT r.comment,r.rating FROM reviews r WHERE " + where, values)
         terms = summarize_keywords(rows)
         for term in terms:
             if not term["chinese"]:

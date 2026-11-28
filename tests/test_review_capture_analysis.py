@@ -92,3 +92,24 @@ class ReviewCaptureAnalysisTests(TestCase):
         self.capture_shopee([{"cmtid": "comment", "rating_star": 2, "comment": "Demorou para chegar"}])
         self.assertIsNone(self.scoped_reviews(1)[0]["translation"])
         self.assertEqual(self.client.get("/api/products/1/review-translation").json()["translated"], 0)
+
+    def test_keyword_filters_match_mention_counts_and_respect_product_scope(self):
+        self.capture_shopee([
+            {"cmtid": "quality-good", "rating_star": 5, "comment": "Qualidade excelente, excelente qualidade."},
+            {"cmtid": "quality-poor", "rating_star": 2, "comment": "Não é de boa qualidade."},
+            {"cmtid": "fast-1", "rating_star": 4, "comment": "A entrega foi boa. Chegou antes do prazo."},
+        ])
+        self.capture_shopee(
+            [{"cmtid": "other-shop", "rating_star": 5, "comment": "Boa qualidade."}],
+            shop="20", page="https://shopee.com.br/product/20/441",
+        )
+        terms = self.client.get("/api/products/1/review-keywords").json()["keywords"]
+        quality = next(term for term in terms if term["chinese"] == "质量好")
+        self.assertEqual(quality["count"], 1)
+        params = {"all_years": True, "product_id": 1, "keyword": quality["key"]}
+        response = self.client.get("/api/reviews", params=params).json()
+        self.assertEqual([row["review_id"] for row in response["items"]], ["quality-good"])
+        self.assertEqual(self.client.get("/api/review-insights", params=params).json()["total"], quality["count"])
+        self.assertEqual(self.client.get("/api/reviews", params={**params, "sentiment": "negative"}).json()["total"], 0)
+        all_terms = self.client.get("/api/review-keywords").json()["keywords"]
+        self.assertEqual(next(term["count"] for term in all_terms if term["key"] == quality["key"]), 2)

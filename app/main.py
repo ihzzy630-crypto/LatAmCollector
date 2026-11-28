@@ -34,7 +34,7 @@ from .review_capture import reconcile_review_identity, review_target
 PLATFORM_HOST = "127.0.0.1"
 PLATFORM_PORT = 8765
 PLATFORM_URL = f"http://{PLATFORM_HOST}:{PLATFORM_PORT}"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.1"
 
 
 def resource_path(relative: str) -> Path:
@@ -426,6 +426,7 @@ def review_query(
     topic: str = "",
     product_id: int | None = None,
     all_years: bool = False,
+    keyword: str = "",
 ) -> tuple[str, list[Any]]:
     where = ["r.rating BETWEEN ? AND ?"]
     values: list[Any] = [min_rating, max_rating]
@@ -444,6 +445,9 @@ def review_query(
     if q:
         where.append("r.comment LIKE ?")
         values.append("%" + q + "%")
+    if keyword:
+        where.append("review_has_keyword(r.comment, ?)")
+        values.append(keyword)
     if item_id:
         where.append("r.item_id = ?")
         values.append(item_id)
@@ -523,6 +527,11 @@ def review_insights(filters: Annotated[tuple[str, list[Any]], Depends(review_que
         "topics": topics,
         "note": "情绪按星级计算；主题按葡萄牙语关键词归类。",
     }
+
+
+@app.get("/api/review-keywords")
+def all_review_keywords():
+    return {"keywords": review_translation.keywords()}
 
 
 @app.get("/api/products/{product_id}/review-keywords")

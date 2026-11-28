@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .categories import classify_stored_product
+from .review_keywords import review_terms
 
 
 def app_directory() -> Path:
@@ -23,6 +24,9 @@ DB_PATH = DATA_DIR / "latam_collector.db"
 def connect():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.create_function(
+        "review_has_keyword", 2, lambda comment, keyword: keyword in review_terms(comment or ""), deterministic=True,
+    )
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     try:

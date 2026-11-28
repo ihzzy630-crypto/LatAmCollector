@@ -20,7 +20,7 @@ const subtitles = {
 const categorySource = { platform: "平台品类", title: "按商品标题分类", legacy: "历史品类", manual: "手动分类", unknown: "待整理" };
 
 const products = { page: 1, pages: 1, items: [], request: 0, view: "cards", categoryGroups: [] };
-const reviews = { page: 1, pages: 1, scope: "", request: 0 };
+const reviews = { page: 1, pages: 1, scope: "", request: 0, keyword: null };
 let currentPage = "dashboard";
 let lastCapture = null;
 let editingProduct = null;
@@ -441,6 +441,8 @@ function resetReviewScope(scope) {
   reviews.page = 1;
   reviews.pages = 1;
   byId("review-filter").reset();
+  reviews.keyword = null;
+  renderReviewKeywordSelection();
   byId("review-platform-field").hidden = Boolean(scope);
   byId("review-item-field").hidden = Boolean(scope);
   byId("review-platform-field").parentElement.classList.toggle("scoped", Boolean(scope));
@@ -489,12 +491,27 @@ function reviewParams(page) {
     page,
     page_size: "30"
   });
+  if (reviews.keyword) params.set("keyword", reviews.keyword.key);
   if (reviews.scope) params.set("product_id", reviews.scope);
   else {
     params.set("platform", readField("review-platform"));
     params.set("item_id", readField("review-item"));
   }
   return params;
+}
+
+function renderReviewKeywordSelection() {
+  byId("clear-review-keyword").hidden = !reviews.keyword;
+  byId("selected-review-keyword").textContent = reviews.keyword?.label ?? "";
+  byId("review-keywords").querySelectorAll("[data-keyword]").forEach(button => {
+    button.setAttribute("aria-pressed", String(button.dataset.keyword === reviews.keyword?.key));
+  });
+}
+
+function selectReviewKeyword(keyword) {
+  reviews.keyword = keyword?.key === reviews.keyword?.key ? null : keyword;
+  renderReviewKeywordSelection();
+  loadReviews();
 }
 
 function stars(rating) {
@@ -527,13 +544,17 @@ function reviewItem(review) {
   const date = review.review_time ? escapeHtml(shortDate(review.review_time)) : "";
   const name = escapeHtml(review.title || (review.item_id ? `商品 ${review.item_id}` : "商品未关联"));
   const product = review.product_id ? `<a class="text-link" data-route href="${escapeHtml(productReviewLink(review.product_id))}" title="${name}">${name}</a>` : `<span>${name}</span>`;
+  const original = review.comment?.trim() ? review.comment : "";
+  const translation = review.translation && review.translation !== review.comment ? review.translation : "";
   return `<article class="review-item">
     <div class="review-item-top">
       <div>${review.rating > 0 ? stars(review.rating) : ""}<span class="pill ${sentimentColor}">${escapeHtml(review.sentiment)}</span></div>
       ${date ? `<time class="muted small tabular" datetime="${date}">${date}</time>` : ""}
     </div>
-    <p class="review-body"${review.comment?.trim() ? ' lang="pt-BR"' : ""}>${escapeHtml(review.comment?.trim() ? review.comment : "（无文字）")}</p>
-    ${review.translation && review.translation !== review.comment ? `<p class="translated-review" lang="zh-CN"><span>机器翻译</span> ${escapeHtml(review.translation)}</p>` : ""}
+    <div class="review-copy${translation ? " bilingual" : ""}">
+      ${translation ? `<p class="translated-review" lang="zh-CN"><span class="review-text-label">中文译文</span>${escapeHtml(translation)}</p>` : ""}
+      <p class="review-body"${original ? ' lang="pt-BR"' : ""}>${translation ? '<span class="review-text-label" lang="zh-CN">葡语原文</span>' : ""}${escapeHtml(original || "（无文字）")}</p>
+    </div>
     <div class="review-meta">
       ${review.topics.map(topic => `<span class="pill">${escapeHtml(topic)}</span>`).join("")}
       ${review.variant ? `<span class="muted small">规格 · ${escapeHtml(review.variant)}</span>` : ""}
@@ -565,7 +586,8 @@ async function loadReviews(page = 1) {
     reviews.pages = updatePager("review", data);
     byId("review-total").textContent = `${number(data.total)} 条评论`;
     byId("review-rows").innerHTML = data.items.length ? data.items.map(reviewItem).join("")
-      : emptyState("没有符合条件的评论", reviews.scope ? "可清空筛选，或前往原商品查看评论。" : "可清空筛选，或从数据导入页导入评论 JSON。");
+      : emptyState("没有符合条件的评论", reviews.keyword ? "可取消关键词筛选或调整其他条件。"
+        : reviews.scope ? "可清空筛选，或前往原商品查看评论。" : "可清空筛选，或从数据导入页导入评论 JSON。");
     renderReviewInsights(summary);
   } catch (error) {
     if (request !== reviews.request) return;
@@ -685,7 +707,7 @@ function renderRoute({ focus = false } = {}) {
   document.title = titles[currentPage] + " · LatAm Collector";
   byId("refresh-page").hidden = !pageLoaders[currentPage];
   updateSubtitle();
-  if (currentPage !== "reviews") reviewTools.show("");
+  if (currentPage !== "reviews") reviewTools.show(null);
   pageLoaders[currentPage]?.();
   if (focus) {
     title.focus({ preventScroll: true });
@@ -739,7 +761,15 @@ for (const form of ["product-filter", "review-filter"]) {
   }, true);
 }
 byId("clear-product-filters").addEventListener("click", clearProductFilters);
-byId("clear-review-filters").addEventListener("click", () => { byId("review-filter").reset(); loadReviews(); });
+byId("clear-review-filters").addEventListener("click", () => {
+  byId("review-filter").reset();
+  selectReviewKeyword(null);
+});
+byId("clear-review-keyword").addEventListener("click", () => selectReviewKeyword(null));
+byId("review-keywords").addEventListener("click", event => {
+  const button = event.target.closest("[data-keyword]");
+  if (button) selectReviewKeyword({ key: button.dataset.keyword, label: button.firstElementChild.textContent });
+});
 byId("sales-metric").addEventListener("change", updateSalesLabel);
 byId("platform").addEventListener("change", applyPlatformPreset);
 byId("sort-by").addEventListener("change", () => loadProducts());

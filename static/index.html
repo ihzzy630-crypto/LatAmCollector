@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LatAm Collector</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.8.0">
-  <script src="/static/review_tools.js?v=0.8.0" defer></script>
-  <script src="/static/app.js?v=0.8.0" defer></script>
+  <link rel="stylesheet" href="/static/app.css?v=0.8.1">
+  <script src="/static/review_tools.js?v=0.8.1" defer></script>
+  <script src="/static/app.js?v=0.8.1" defer></script>
 </head>
 <body>
   <div class="layout">
@@ -166,72 +166,91 @@
       <section id="reviews" class="page" aria-labelledby="page-title" hidden>
         <section id="review-product" class="panel review-product" aria-label="当前商品" hidden></section>
 
-        <section id="review-collection" class="panel review-controls" aria-labelledby="review-collection-title" hidden>
-          <div>
-            <h2 id="review-collection-title">评论采集</h2>
-            <p id="review-job-status" class="muted small" role="status">正在连接 Chrome 采集助手…</p>
-          </div>
-          <div class="actions">
-            <button class="btn secondary" id="review-open-tab" type="button" hidden>查看采集页</button>
-            <button class="btn secondary" id="review-stop" type="button" hidden>暂停</button>
-            <button class="btn" id="review-start" type="button" disabled>开始采集评论</button>
-          </div>
-        </section>
-
-        <form id="review-filter" class="panel filter-panel" aria-label="评论筛选">
-          <div class="filter-grid review-primary">
-            <div class="field"><label for="review-q">评论原文</label><input id="review-q" type="search" placeholder="葡萄牙语关键词"></div>
-            <div class="field" id="review-platform-field"><label for="review-platform">平台</label><select id="review-platform"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div>
-            <div class="field"><label for="review-sentiment">情绪（按星级）</label><select id="review-sentiment"><option value="">全部情绪</option><option value="positive">正向 · 4–5 星</option><option value="neutral">中性 · 3 星</option><option value="negative">负向 · 1–2 星</option></select></div>
-            <div class="field"><label for="review-topic">评论主题</label><select id="review-topic"><option value="">全部主题</option><option>物流时效</option><option>质量做工</option><option>包装破损</option><option>尺寸规格</option><option>性价比</option><option>商品一致</option></select></div>
-            <div class="field"><label for="review-media">图片 / 视频</label><select id="review-media"><option value="">不限</option><option value="1">有图片或视频</option><option value="0">无图片和视频</option></select></div>
-          </div>
-          <div class="filter-tools">
-            <button class="btn disclosure" type="button" data-disclosure="review-advanced" aria-controls="review-advanced" aria-expanded="false">更多筛选 <span class="chevron" aria-hidden="true"></span></button>
+        <div class="review-workflow" id="review-workflow">
+          <section id="review-collection" class="panel review-controls" aria-labelledby="review-collection-title" hidden>
+            <div class="review-control-copy">
+              <h2 id="review-collection-title">评论采集</h2>
+              <p id="review-job-status" class="muted small" role="status">正在连接 Chrome 采集助手…</p>
+            </div>
             <div class="actions">
-              <button class="btn secondary" id="clear-review-filters" type="button">清空</button>
-              <button class="btn" type="submit">应用筛选</button>
+              <button class="btn secondary" id="review-open-tab" type="button" hidden>查看采集页</button>
+              <button class="btn secondary" id="review-stop" type="button" hidden>暂停</button>
+              <button class="btn secondary" id="review-start" type="button" disabled>开始采集评论</button>
             </div>
-          </div>
-          <div class="filter-advanced" id="review-advanced" hidden>
-            <div class="filter-grid advanced-grid">
-              <div class="field"><label for="review-year-from">起始年份</label><input id="review-year-from" type="number" min="1" max="9999" placeholder="不限"></div>
-              <div class="field"><label for="review-year-to">结束年份</label><input id="review-year-to" type="number" min="1" max="9999" placeholder="不限"></div>
-              <div class="field" id="review-item-field"><label for="review-item">平台商品 ID</label><input id="review-item" placeholder="输入商品 ID"></div>
-            </div>
-          </div>
-        </form>
-
-        <div class="review-overview">
-          <section class="panel">
-            <div class="panel-head"><h2>评分分布</h2><span class="muted small">当前筛选</span></div>
-            <div class="panel-body" id="review-rating"><p class="empty">正在读取评分…</p></div>
           </section>
-          <section class="panel">
-            <div class="panel-head"><h2>评论主题</h2><span class="muted small">按葡语关键词归类</span></div>
-            <div class="panel-body" id="review-insights"><p class="empty">正在读取评论主题…</p></div>
+          <section class="panel review-controls translation-control" aria-labelledby="review-translation-title">
+            <div class="review-control-copy">
+              <h2 id="review-translation-title">中文译文</h2>
+              <p id="review-translation-status" class="muted small" role="status">正在检查翻译状态…</p>
+              <progress id="review-translation-progress" aria-label="中文翻译进度" value="0" max="1" hidden></progress>
+            </div>
+            <button class="btn" id="review-translate" type="button" aria-describedby="review-translation-status" disabled>翻译成中文</button>
           </section>
         </div>
 
-        <section id="review-keyword-panel" class="panel" aria-labelledby="review-keyword-title" hidden>
-          <div class="panel-head">
-            <div><h2 id="review-keyword-title">评论关键词</h2><p class="muted small">从该商品的已入库评论统计</p></div>
-            <button class="btn secondary" id="review-translate" type="button" hidden>翻译已入库评论</button>
-          </div>
-          <div class="panel-body">
-            <p id="review-translation-status" class="muted small" role="status">正在检查中文翻译…</p>
-            <div id="review-keywords" class="review-keywords"></div>
-          </div>
-        </section>
+        <div class="review-workspace">
+          <div class="review-main">
+            <section id="review-keyword-panel" class="panel" aria-labelledby="review-keyword-title">
+              <div class="panel-head">
+                <h2 id="review-keyword-title">关键词气泡</h2>
+                <span id="review-keyword-scope" class="muted small"></span>
+              </div>
+              <div id="review-keywords" class="panel-body review-keywords" role="group" aria-label="按评论关键词筛选"></div>
+            </section>
 
-        <section class="panel" aria-labelledby="review-list-title">
-          <div class="panel-head"><div class="results-heading"><h2 id="review-list-title">评论原文</h2><span class="count" id="review-total" role="status">正在读取…</span></div></div>
-          <div id="review-rows"><p class="empty">正在读取评论…</p></div>
-          <nav class="pager" aria-label="评论分页" id="review-pager" hidden>
-            <span class="muted small" id="review-range"></span>
-            <div class="actions"><button class="btn secondary" type="button" id="review-prev">上一页</button><span id="review-page" class="muted small"></span><button class="btn secondary" type="button" id="review-next">下一页</button></div>
-          </nav>
-        </section>
+            <form id="review-filter" class="panel filter-panel" aria-label="评论筛选">
+              <div class="filter-grid review-primary">
+                <div class="field"><label for="review-q">评论原文</label><input id="review-q" type="search" placeholder="葡萄牙语关键词"></div>
+                <div class="field" id="review-platform-field"><label for="review-platform">平台</label><select id="review-platform"><option value="">全部平台</option><option value="shopee">Shopee</option><option value="shein">SHEIN</option></select></div>
+                <div class="field"><label for="review-sentiment">情绪（按星级）</label><select id="review-sentiment"><option value="">全部情绪</option><option value="positive">正向 · 4–5 星</option><option value="neutral">中性 · 3 星</option><option value="negative">负向 · 1–2 星</option></select></div>
+                <div class="field"><label for="review-topic">评论主题</label><select id="review-topic"><option value="">全部主题</option><option>物流时效</option><option>质量做工</option><option>包装破损</option><option>尺寸规格</option><option>性价比</option><option>商品一致</option></select></div>
+                <div class="field"><label for="review-media">图片 / 视频</label><select id="review-media"><option value="">不限</option><option value="1">有图片或视频</option><option value="0">无图片和视频</option></select></div>
+              </div>
+              <div class="filter-tools">
+                <button class="btn disclosure" type="button" data-disclosure="review-advanced" aria-controls="review-advanced" aria-expanded="false">更多筛选 <span class="chevron" aria-hidden="true"></span></button>
+                <div class="actions">
+                  <button class="btn secondary" id="clear-review-filters" type="button">清空</button>
+                  <button class="btn" type="submit">应用筛选</button>
+                </div>
+              </div>
+              <div class="filter-advanced" id="review-advanced" hidden>
+                <div class="filter-grid advanced-grid">
+                  <div class="field"><label for="review-year-from">起始年份</label><input id="review-year-from" type="number" min="1" max="9999" placeholder="不限"></div>
+                  <div class="field"><label for="review-year-to">结束年份</label><input id="review-year-to" type="number" min="1" max="9999" placeholder="不限"></div>
+                  <div class="field" id="review-item-field"><label for="review-item">平台商品 ID</label><input id="review-item" placeholder="输入商品 ID"></div>
+                </div>
+              </div>
+            </form>
+
+            <section class="panel review-list" aria-labelledby="review-list-title">
+              <div class="panel-head">
+                <div class="results-heading">
+                  <h2 id="review-list-title" tabindex="-1">评论列表</h2>
+                  <span class="count" id="review-total" role="status">正在读取…</span>
+                </div>
+                <button class="keyword-selection" id="clear-review-keyword" type="button" aria-label="清除关键词筛选" hidden>
+                  <span id="selected-review-keyword"></span><span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <div id="review-rows"><p class="empty">正在读取评论…</p></div>
+              <nav class="pager" aria-label="评论分页" id="review-pager" hidden>
+                <span class="muted small" id="review-range"></span>
+                <div class="actions"><button class="btn secondary" type="button" id="review-prev">上一页</button><span id="review-page" class="muted small"></span><button class="btn secondary" type="button" id="review-next">下一页</button></div>
+              </nav>
+            </section>
+          </div>
+
+          <aside class="review-overview" aria-label="评论统计">
+            <section class="panel">
+              <div class="panel-head"><h2>评分分布</h2><span class="muted small">当前筛选</span></div>
+              <div class="panel-body" id="review-rating"><p class="empty">正在读取评分…</p></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h2>评论主题</h2><span class="muted small">按葡语关键词归类</span></div>
+              <div class="panel-body" id="review-insights"><p class="empty">正在读取评论主题…</p></div>
+            </section>
+          </aside>
+        </div>
       </section>
 
       <section id="tasks" class="page" aria-labelledby="page-title" hidden>

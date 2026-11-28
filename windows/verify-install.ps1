@@ -58,6 +58,9 @@ try {
     if ($dashboardResponse.StatusCode -ne 200 -or $dashboardResponse.Content -notlike '*/static/app.js*') {
         throw 'The updated radar page is missing.'
     }
+    foreach ($id in @('review-translate', 'review-translation-progress', 'review-keywords')) {
+        if ($dashboardResponse.Content -notlike ('*id="' + $id + '"*')) { throw "The review page is missing $id." }
+    }
     foreach ($asset in @('app.css', 'app.js', 'review_tools.js')) {
         $response = Invoke-WebRequest -Uri "$url/static/$asset" -UseBasicParsing -TimeoutSec 5
         if ($response.StatusCode -ne 200 -or $response.RawContentLength -lt 100) {
@@ -80,10 +83,14 @@ try {
     $ratingFixture = @{
         source_url = 'https://shopee.com.br/api/v2/item/get_ratings?shopid=12&itemid=441'
         page_url = 'https://shopee.com.br/product/12/441'
-        payload = @{data = @{ratings = @(@{cmtid = 701; rating_star = 5; comment = 'O produto foi entregue rapidamente.'})}}
+        payload = @{data = @{ratings = @(@{cmtid = 701; rating_star = 5; comment = 'Chegou rapido e veio bem embalado.'})}}
     } | ConvertTo-Json -Depth 6
     $rating = Invoke-RestMethod -Uri "$url/api/capture" -Method Post -ContentType 'application/json' -Body $ratingFixture
     if ($rating.review_batch.item_id -ne '441') { throw 'The installed app did not link the review to its product.' }
+    $terms = Invoke-RestMethod -Uri "$url/api/products/1/review-keywords"
+    $packaging = $terms.keywords | Where-Object key -EQ 'bem embalado'
+    $matches = Invoke-RestMethod -Uri "$url/api/reviews?product_id=1&all_years=true&keyword=bem%20embalado"
+    if ($packaging.count -ne 1 -or $matches.total -ne 1) { throw 'Keyword filtering did not match the installed app review.' }
     $translationUrl = "$url/api/products/1/review-translation"
     $queued = Invoke-RestMethod -Uri $translationUrl -Method Post -ContentType 'application/json' -Body '{}'
     if (-not $queued.models_ready) { throw 'The Windows installer did not include its offline models.' }
@@ -117,7 +124,7 @@ try {
         throw 'The uninstaller did not remove the app and preserve the product library.'
     }
     $verified = $true
-    Write-Host 'Verified Windows installation, shortcuts, Chrome files, scoped review capture, offline translation, reinstall and uninstall.'
+    Write-Host 'Verified Windows installation, shortcuts, Chrome files, review capture, keyword filtering, offline translation, reinstall and uninstall.'
 }
 finally {
     Stop-TestService $service
